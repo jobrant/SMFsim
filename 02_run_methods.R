@@ -194,73 +194,61 @@ run_mapitnorm <- function(pseudo_groups,
 #' @param pseudo_groups List from create_pseudo_groups().
 #' @return Named list with method = "ComBatMet" and normalized split data.
 run_combatmet <- function(pseudo_groups) {
-  message("Method: ComBatMet")
-
-  if (!requireNamespace("sva", quietly = TRUE)) {
-    stop("Package 'sva' is required for ComBatMet. ",
-         "Install with: BiocManager::install('sva')")
-  }
-
-  all_samples <- c(pseudo_groups$PseudoA, pseudo_groups$PseudoB)
+  message("Method: ComBatMet (manual mean-only)")
+  
+  all_samples <- lapply(
+    c(pseudo_groups$PseudoA, pseudo_groups$PseudoB),
+    data.table::copy
+  )
+  names(all_samples) <- c(names(pseudo_groups$PseudoA), names(pseudo_groups$PseudoB))
   n_A <- length(pseudo_groups$PseudoA)
-
-  # Build rate matrix (sites × samples)
-  rate_matrix <- do.call(cbind, lapply(all_samples, function(dt) dt$rate))
+  nc <- length(all_samples)
+  
+  # Build rate matrix
+  rate_matrix <- do.call(cbind, lapply(all_samples, function(dt) as.numeric(dt$rate)))
   colnames(rate_matrix) <- names(all_samples)
-
-  # Build batch variable — here we treat each sample as its own "batch"
-  # (ComBatMet models per-sample efficiency as a batch effect)
-  # Alternatively, treat the two pseudo-groups as batches
-  batch <- ifelse(grepl("^PseudoA", names(all_samples)), 1, 2)
-
-  # Biological group (same as batch in null simulation, but needed for spike-in)
-  group <- factor(ifelse(grepl("^PseudoA", names(all_samples)), "A", "B"))
-  mod <- model.matrix(~ group)
-
-  # Apply ComBat
-  # logit-transform rates (ComBat assumes ~normal data)
-  # Add small offset to avoid log(0)
-  eps <- 1e-6
-  rate_matrix_bounded <- pmin(1 - eps, pmax(eps, rate_matrix))
-  logit_rates <- log(rate_matrix_bounded / (1 - rate_matrix_bounded))
-
-  adjusted <- tryCatch({
-    sva::ComBat(
-      dat = logit_rates,
-      batch = batch,
-      mod = mod
-    )
-  }, error = function(e) {
-    message("ComBat failed: ", e$message)
-    message("Falling back to ComBat with mean.only = TRUE")
-    sva::ComBat(
-      dat = logit_rates,
-      batch = batch,
-      mod = mod,
-      mean.only = TRUE
-    )
-  })
-
-  # Inverse logit to get back to [0, 1]
-  adjusted_rates <- 1 / (1 + exp(-adjusted))
-
-  # Rebuild sample data.tables
-  result_samples <- lapply(seq_along(all_samples), function(i) {
+  nr <- nrow(rate_matrix)
+  
+  # Bound rates away from 0 and 1 (in place to preserve matrix)
+  rate_matrix[rate_matrix < 1e-6] <- 1e-6
+  rate_matrix[rate_matrix > (1 - 1e-6)] <- 1 - 1e-6
+  
+  # Logit transform (in place to preserve matrix)
+  logit_rates <- rate_matrix
+  logit_rates[] <- log(rate_matrix / (1 - rate_matrix))
+  
+  message("  logit_rates dim: ", nrow(logit_rates), " x ", ncol(logit_rates))
+  
+  # Mean-only batch correction
+  grand_mean <- rowMeans(logit_rates)
+  batch_A_mean <- rowMeans(logit_rates[, 1:n_A, drop = FALSE])
+  batch_B_mean <- rowMeans(logit_rates[, (n_A+1):nc, drop = FALSE])
+  
+  adjusted <- logit_rates
+  adjusted[, 1:n_A] <- adjusted[, 1:n_A] - batch_A_mean + grand_mean
+  adjusted[, (n_A+1):nc] <- adjusted[, (n_A+1):nc] - batch_B_mean + grand_mean
+  
+  # Inverse logit
+  adjusted_rates <- adjusted
+  adjusted_rates[] <- 1 / (1 + exp(-adjusted))
+  
+  message("  adjusted_rates dim: ", nrow(adjusted_rates), " x ", ncol(adjusted_rates))
+  
+  result_samples <- lapply(seq_len(nc), function(i) {
     out <- copy(all_samples[[i]])
     out[, rate := adjusted_rates[, i]]
     out[, mc := as.integer(round(cov * rate))]
     return(out)
   })
   names(result_samples) <- names(all_samples)
-
+  
   split_data <- list(
     PseudoA = result_samples[seq_len(n_A)],
-    PseudoB = result_samples[seq(n_A + 1, length(result_samples))]
+    PseudoB = result_samples[seq(n_A + 1, nc)]
   )
-
+  
   return(list(method = "ComBatMet", data = split_data))
 }
-
 
 # ── DMR calling with metilene ────────────────────────────────────────────────
 
@@ -387,39 +375,82 @@ call_dmrs_metilene <- function(split_data,
 .merge_group_bedgraphs <- function(path_A, path_B, split_data, out_path) {
   dt_A <- fread(path_A, header = FALSE)
   dt_B <- fread(path_B, header = FALSE)
-
+  
   n_A <- length(split_data$PseudoA)
   n_B <- length(split_data$PseudoB)
-
-  # Metilene format: chr start end groupA_rep1 groupA_rep2 ... groupB_rep1 groupB_rep2 ...
-  # dt_A has: chr, start, end, rate_1, rate_2, ...
-  # dt_B has: chr, start, end, rate_1, rate_2, ...
-  # Merge on chr, start, end
-
-  # Rename rate columns to avoid collision
+  
+  # Rename rate columns with group prefix to match metilene -a/-b args
   rate_cols_A <- paste0("V", 4:(3 + n_A))
   rate_cols_B <- paste0("V", 4:(3 + n_B))
-
-  setnames(dt_A, rate_cols_A, paste0("A_", seq_len(n_A)))
-  setnames(dt_B, rate_cols_B, paste0("B_", seq_len(n_B)))
-
+  
+  setnames(dt_A, rate_cols_A, paste0("PseudoA_", seq_len(n_A)))
+  setnames(dt_B, rate_cols_B, paste0("PseudoB_", seq_len(n_B)))
+  
   merged <- merge(
     dt_A, dt_B,
     by = c("V1", "V2", "V3"),
     sort = FALSE
   )
-
+  
+  # Rename coordinate columns
+  setnames(merged, c("V1", "V2", "V3"), c("chr", "start", "end"))
+  
   # Reorder: chr, start, end, all A reps, all B reps
-  a_cols <- paste0("A_", seq_len(n_A))
-  b_cols <- paste0("B_", seq_len(n_B))
-  merged <- merged[, c("V1", "V2", "V3", a_cols, b_cols), with = FALSE]
-
-  setorder(merged, V1, V2)
-  fwrite(merged, out_path, sep = "\t", col.names = FALSE)
-
+  a_cols <- paste0("PseudoA_", seq_len(n_A))
+  b_cols <- paste0("PseudoB_", seq_len(n_B))
+  merged <- merged[, c("chr", "start", "end", a_cols, b_cols), with = FALSE]
+  
+  setorder(merged, chr, start)
+  fwrite(merged, out_path, sep = "\t", col.names = TRUE)
+  
   return(out_path)
 }
 
+run_all_methods <- function(pseudo_groups,
+                            methods = c("raw", "downsampled", "MAPitNorm", "ComBatMet"),
+                            mapitnorm_params = list(
+                              within_alpha = 0.3,
+                              between_alpha = 0.5,
+                              min_coverage = 5
+                            )) {
+  results <- list()
+  
+  for (m in methods) {
+    message(sprintf("\n=== Running method: %s ===", m))
+    t0 <- Sys.time()
+    
+    # Deep copy so each method gets fresh data
+    pseudo_copy <- list(
+      PseudoA = lapply(pseudo_groups$PseudoA, data.table::copy),
+      PseudoB = lapply(pseudo_groups$PseudoB, data.table::copy),
+      params = pseudo_groups$params
+    )
+    
+    result <- tryCatch({
+      switch(m,
+             raw = run_raw(pseudo_copy),
+             downsampled = run_downsampled(pseudo_copy),
+             MAPitNorm = do.call(run_mapitnorm, c(list(pseudo_groups = pseudo_copy),
+                                                  mapitnorm_params)),
+             ComBatMet = run_combatmet(pseudo_copy),
+             stop("Unknown method: ", m)
+      )
+    }, error = function(e) {
+      warning(sprintf("Method '%s' failed: %s", m, e$message))
+      return(NULL)
+    })
+    
+    elapsed <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
+    message(sprintf("Method %s completed in %.1f seconds", m, elapsed))
+    
+    if (!is.null(result)) {
+      result$elapsed_seconds <- elapsed
+      results[[m]] <- result
+    }
+  }
+  
+  return(results)
+}
 
 # ── Master method runner ─────────────────────────────────────────────────────
 
@@ -430,41 +461,4 @@ call_dmrs_metilene <- function(split_data,
 #'   Options: "raw", "downsampled", "MAPitNorm", "ComBatMet"
 #' @param mapitnorm_params Named list of MAPitNorm parameters.
 #' @return Named list of results, each with $method and $data.
-run_all_methods <- function(pseudo_groups,
-                             methods = c("raw", "downsampled", "MAPitNorm", "ComBatMet"),
-                             mapitnorm_params = list(
-                               within_alpha = 0.3,
-                               between_alpha = 0.5,
-                               min_coverage = 5
-                             )) {
-  results <- list()
 
-  for (m in methods) {
-    message(sprintf("\n=== Running method: %s ===", m))
-    t0 <- Sys.time()
-
-    result <- tryCatch({
-      switch(m,
-        raw = run_raw(pseudo_groups),
-        downsampled = run_downsampled(pseudo_groups),
-        MAPitNorm = do.call(run_mapitnorm, c(list(pseudo_groups = pseudo_groups),
-                                              mapitnorm_params)),
-        ComBatMet = run_combatmet(pseudo_groups),
-        stop("Unknown method: ", m)
-      )
-    }, error = function(e) {
-      warning(sprintf("Method '%s' failed: %s", m, e$message))
-      return(NULL)
-    })
-
-    elapsed <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
-    message(sprintf("Method %s completed in %.1f seconds", m, elapsed))
-
-    if (!is.null(result)) {
-      result$elapsed_seconds <- elapsed
-      results[[m]] <- result
-    }
-  }
-
-  return(results)
-}
