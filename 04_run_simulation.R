@@ -17,9 +17,9 @@ library(data.table)
 library(MAPitNorm)
 
 # Source simulation modules
-source("R/01_simulate_efficiency.R")
-source("R/02_run_methods.R")
-source("R/03_evaluate.R")
+source("nome-simulator-9000/01_simulate_efficiency.R")
+source("nome-simulator-9000/02_run_methods.R")
+source("nome-simulator-9000/03_evaluate.R")
 
 # ── Configuration ────────────────────────────────────────────────────────────
 
@@ -32,7 +32,7 @@ parse_args <- function() {
     data_dir      = "data/allc",
     sample_sheet  = "data/sample_sheet.csv",
     output_dir    = "results/simulation",
-    metilene_path = "metilene",
+    metilene_path = "/apps/metilene/0.2.8/metilene",
     scenarios     = c("mild", "moderate", "severe"),
     effect_sizes  = c(0.05, 0.10, 0.15, 0.20, 0.30),
     n_spikein_regions = 300,
@@ -94,7 +94,7 @@ prepare_wt_replicates <- function(config) {
                   nrow(all_samples[[1]])))
 
   # Print summary
-  summarize_meth(all_samples)
+  # summarize_meth(all_samples)
 
   return(all_samples)
 }
