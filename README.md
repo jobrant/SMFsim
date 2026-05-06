@@ -87,7 +87,7 @@ install.packages(c("data.table", "ggplot2"))
 # Bioconductor
 BiocManager::install(c("sva", "GenomicRanges", "IRanges", "S4Vectors"))
 
-# MAPitNorm (your package)
+# MAPitNorm 
 devtools::install("path/to/MAPitNorm")
 ```
 
