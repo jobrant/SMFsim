@@ -181,7 +181,7 @@ run_all_methods_real <- function(real_data,
             normalize_rates = TRUE,
             coverage_between_groups = FALSE,
             rate_within_groups = TRUE,
-            rate_between_groups = TRUE,
+            rate_between_groups = FALSE,
             within_alpha = mapitnorm_params$within_alpha,
             between_alpha = mapitnorm_params$between_alpha,
             min_coverage = mapitnorm_params$min_coverage
