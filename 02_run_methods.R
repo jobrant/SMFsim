@@ -306,10 +306,11 @@ prepare_metilene_input <- function(split_data, out_dir) {
 #' @param min_diff Minimum mean difference to report (default: 0.1).
 #' @return data.table of called DMRs with columns: chr, start, end, q_value, mean_diff, n_sites
 call_dmrs_metilene <- function(split_data,
-                                out_dir,
-                                metilene_path = "metilene",
-                                min_cpg = 5,
-                                min_diff = 0.1) {
+                               out_dir,
+                               metilene_path = "metilene",
+                               min_cpg = 5,
+                               min_diff = 0.1, 
+                               metilene_max_dist = 1500) {
 
   # Prepare input files
   input_dir <- file.path(out_dir, "metilene_input")
@@ -331,8 +332,8 @@ call_dmrs_metilene <- function(split_data,
   out_file <- file.path(out_dir, "metilene_dmrs.bed")
 
   cmd <- sprintf(
-    "%s -a PseudoA -b PseudoB -m %d -d %f %s > %s 2>/dev/null",
-    metilene_path, min_cpg, min_diff, merged_input, out_file
+    "%s -a PseudoA -b PseudoB -m %d -d %f -M %d %s > %s 2>/dev/null",
+    metilene_path, min_cpg, min_diff, metilene_max_dist, merged_input, out_file
   )
 
   message("Running metilene: ", cmd)
@@ -343,8 +344,8 @@ call_dmrs_metilene <- function(split_data,
 
     # Try without the 2>/dev/null to see errors
     cmd_debug <- sprintf(
-      "%s -a PseudoA -b PseudoB -m %d -d %f %s",
-      metilene_path, min_cpg, min_diff, merged_input
+      "%s -a PseudoA -b PseudoB -m %d -d %f -M %d %s",
+      metilene_path, min_cpg, min_diff, metilene_max_dist, merged_input
     )
     system(cmd_debug)
   }
