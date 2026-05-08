@@ -6,7 +6,7 @@
 
 library(data.table)
 
-# ── Format helpers ───────────────────────────────────────────────────────────
+# Format helpers ----------------------------------------------------------
 
 #' Convert pseudo-group data to the format expected by MAPitNorm
 #'
@@ -67,7 +67,7 @@ export_allc_files <- function(pseudo_groups, out_dir) {
 }
 
 
-# ── Method: Raw (no normalization) ───────────────────────────────────────────
+# Method: Raw (no normalization) ------------------------------------------
 
 #' Run analysis on raw (unnormalized) data
 #'
@@ -87,7 +87,7 @@ run_raw <- function(pseudo_groups) {
 }
 
 
-# ── Method: Downsampling ─────────────────────────────────────────────────────
+# Method: Downsampling ----------------------------------------------------
 
 #' Downsample coverage to the minimum across all samples
 #'
@@ -146,7 +146,7 @@ run_downsampled <- function(pseudo_groups) {
 }
 
 
-# ── Method: MAPitNorm ────────────────────────────────────────────────────────
+# Method: MAPitNorm -------------------------------------------------------
 
 #' Run MAPitNorm normalization pipeline
 #'
@@ -184,7 +184,7 @@ run_mapitnorm <- function(pseudo_groups,
 }
 
 
-# ── Method: ComBatMet (via external call) ─────────────────────────────────────
+# Method: ComBatMet (via external call) -----------------------------------
 
 #' Run ComBatMet normalization
 #'
@@ -250,7 +250,7 @@ run_combatmet <- function(pseudo_groups) {
   return(list(method = "ComBatMet", data = split_data))
 }
 
-# ── DMR calling with metilene ────────────────────────────────────────────────
+# DMR calling with metilene -----------------------------------------------
 
 #' Prepare bedGraph files for metilene input
 #'
@@ -452,7 +452,7 @@ run_all_methods <- function(pseudo_groups,
   return(results)
 }
 
-# ── Master method runner ─────────────────────────────────────────────────────
+# Master method runner ----------------------------------------------------
 
 #' Run all normalization methods on pseudo-group data
 #'
