@@ -1,4 +1,5 @@
-# SMFsim
+
+# SMFsim: Single Molecule Footprinting Data simulation framework
 
 Benchmarking framework for evaluating normalization methods for exogenous
 methyltransferase data (MAPit, NOMe-seq, Fiber-seq). Simulates enzyme efficiency artifacts
