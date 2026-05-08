@@ -1,15 +1,15 @@
-# NOMe-Simulator-9000
+# SMFsim
 
 Benchmarking framework for evaluating normalization methods for exogenous
-methyltransferase data (MAPit, NOMe-seq). Simulates enzyme efficiency artifacts
+methyltransferase data (MAPit, NOMe-seq, Fiber-seq). Simulates enzyme efficiency artifacts
 and spike-in DMRs to assess false positive rates, sensitivity, and precision
 across normalization approaches.
 
-Developed as a companion analysis project for [MAPitNorm](https://github.com/jobrant/MAPitNorm).
+Developed as a companion analysis project for [SMFnorm](https://github.com/jobrant/SMFnorm).
 
 ## Motivation
 
-Exogenous methyltransferase assays (MAPit, NOMe-seq) probe chromatin
+Exogenous methyltransferase assays (MAPit, NOMe-seq, Fiber-seq) probe chromatin
 accessibility by treating genomic DNA with GpC methyltransferase (M.CviPI).
 Variation in enzyme efficiency between samples introduces systematic artifacts
 that can be mistaken for biological differences. Existing normalization
@@ -46,7 +46,7 @@ and effect sizes.
 |--------|----------|----------------|
 | Raw | No normalization (baseline) | Direct pass-through |
 | Downsampled | Hypergeometric downsampling to minimum per-site coverage | `02_run_methods.R` |
-| MAPitNorm | Quantile-bin shrinkage normalization | [MAPitNorm package](https://github.com/jobrant/MAPitNorm) |
+| SMFnorm | Quantile-bin shrinkage normalization | [SMFnorm package](https://github.com/jobrant/SMFnorm) |
 | ComBatMet | Mean-only batch correction on logit-transformed rates | Manual implementation (sva-equivalent) |
 
 ### Efficiency Scenarios
@@ -92,7 +92,7 @@ done
 ## File Structure
 
 ```
-nome-simulator-9000/
+SMFsim/
 ├── R/
 │   ├── 01_simulate_efficiency.R   # Efficiency distortion + spike-in DMR injection
 │   ├── 02_run_methods.R           # Method runners + metilene DMR calling
@@ -121,7 +121,7 @@ nome-simulator-9000/
 ```r
 install.packages(c("data.table", "ggplot2"))
 BiocManager::install(c("GenomicRanges", "IRanges", "S4Vectors"))
-devtools::install_github("jobrant/MAPitNorm")
+devtools::install_github("jobrant/SMFnorm")
 ```
 
 ### External tools
