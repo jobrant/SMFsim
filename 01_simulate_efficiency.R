@@ -6,7 +6,7 @@
 
 library(data.table)
 
-# ── Enzyme efficiency simulation ─────────────────────────────────────────────
+# Enzyme efficiency simulation --------------------------------------------
 
 #' Simulate enzyme efficiency distortion on a single sample
 #'
@@ -85,7 +85,7 @@ create_pseudo_groups <- function(replicates,
   set.seed(seed)
 
   if (mode == "clone") {
-    # ── Clone mode: all reps used for both groups (N vs N) ──
+    # Clone mode: all reps used for both groups (N vs N)
     # Each replicate is independently distorted for A and B using different
     # efficiency values and different random seeds, so the two copies diverge
     # only due to the efficiency artifact.
@@ -118,7 +118,7 @@ create_pseudo_groups <- function(replicates,
     )
 
   } else {
-    # ── Split mode: reps divided between groups ──
+    # Split mode: reps divided between groups
     n_A <- ceiling(n_reps / 2)
     n_B <- n_reps - n_A
 
@@ -165,7 +165,7 @@ create_pseudo_groups <- function(replicates,
 }
 
 
-# ── Spike-in DMR injection ───────────────────────────────────────────────────
+# Spike-in DMR injection --------------------------------------------------
 
 #' Select random genomic regions for spike-in DMRs
 #'
@@ -181,7 +181,7 @@ select_spikein_regions <- function(dt,
                                     n_regions = 300,
                                     region_width_bp = 500,
                                     min_sites = 5,
-                                    seed = 123) {
+                                    seed = 42) {
   set.seed(seed)
 
   # Get unique chromosomes and their site ranges
@@ -322,7 +322,7 @@ inject_spikein_dmrs <- function(dt,
 }
 
 
-# ── Scenario definitions ─────────────────────────────────────────────────────
+# Scenario definitions ----------------------------------------------------
 
 #' Get predefined efficiency scenarios
 #'

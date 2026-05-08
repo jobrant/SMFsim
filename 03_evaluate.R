@@ -6,7 +6,7 @@
 
 library(data.table)
 
-# ── DMR classification ───────────────────────────────────────────────────────
+# DMR classification ------------------------------------------------------
 
 #' Classify called DMRs against ground-truth spike-in regions
 #'
@@ -164,7 +164,7 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
 }
 
 
-# ── Performance metrics ──────────────────────────────────────────────────────
+# Performance metrics -----------------------------------------------------
 
 #' Compute performance metrics from TP/FP/FN counts
 #'
@@ -195,7 +195,7 @@ compute_metrics <- function(summary_vec) {
 }
 
 
-# ── Aggregation across scenarios ─────────────────────────────────────────────
+# Aggregation across scenarios --------------------------------------------
 
 #' Compile results from multiple scenarios and methods into a summary table
 #'

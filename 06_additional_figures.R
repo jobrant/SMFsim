@@ -7,7 +7,7 @@
 library(data.table)
 library(ggplot2)
 
-# ── Plotting theme and shared aesthetics ─────────────────────────────────────
+# Plotting theme and shared aesthetics ------------------------------------
 
 theme_manuscript <- function(base_size = 12) {
   theme_minimal(base_size = base_size) +
@@ -42,7 +42,7 @@ scenario_labels <- c(
 )
 
 
-# ── Figure 6: Side-by-side sensitivity + precision panels ────────────────────
+# Figure 6: Side-by-side sensitivity + precision panels -------------------
 
 #' Combined sensitivity and precision panels
 #'
@@ -96,7 +96,7 @@ plot_sensitivity_precision_panels <- function(spikein_dt, out_dir = NULL) {
 }
 
 
-# ── Figure 7: Stacked bar — TP vs FP breakdown ──────────────────────────────
+# Figure 7: Stacked bar — TP vs FP breakdown ------------------------------
 
 #' Stacked bar chart showing composition of DMR calls (TP vs FP)
 #'
@@ -150,7 +150,7 @@ plot_call_breakdown <- function(spikein_dt, out_dir = NULL) {
 }
 
 
-# ── Figure 8: "What a researcher actually sees" — calls table ────────────────
+# Figure 8: "What a researcher actually sees" — calls table ---------------
 
 #' Focused comparison table at a single effect size
 #'
@@ -204,7 +204,7 @@ plot_researcher_view <- function(spikein_dt, target_effect = 0.3, out_dir = NULL
 }
 
 
-# ── Figure 9: F1 line plot (clearer than heatmap for this data) ──────────────
+# Figure 9: F1 line plot (clearer than heatmap for this data) -------------
 
 #' F1 score as line plot, easier to read than the heatmap
 #'
@@ -246,7 +246,7 @@ plot_f1_lines <- function(spikein_dt, out_dir = NULL) {
 }
 
 
-# ── Helper ───────────────────────────────────────────────────────────────────
+# Helper ------------------------------------------------------------------
 
 .save_figure <- function(plot, name, out_dir, width = 8, height = 6) {
   dir.create(out_dir, recursive = TRUE, showWarnings = FALSE)
@@ -261,7 +261,7 @@ plot_f1_lines <- function(spikein_dt, out_dir = NULL) {
 }
 
 
-# ── Generate all additional figures ──────────────────────────────────────────
+# Generate all additional figures -----------------------------------------
 
 #' Generate all additional figures
 #'

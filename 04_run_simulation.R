@@ -21,7 +21,7 @@ source("nome-simulator-9000/01_simulate_efficiency.R")
 source("nome-simulator-9000/02_run_methods.R")
 source("nome-simulator-9000/03_evaluate.R")
 
-# ── Configuration ────────────────────────────────────────────────────────────
+# Configuration -----------------------------------------------------------
 
 #' Parse command line arguments or use defaults
 parse_args <- function() {
@@ -67,7 +67,7 @@ parse_args <- function() {
 }
 
 
-# ── Data preparation ─────────────────────────────────────────────────────────
+# Data preparation --------------------------------------------------------
 
 #' Load WT replicates and prepare for simulation
 #'
@@ -100,7 +100,7 @@ prepare_wt_replicates <- function(config) {
 }
 
 
-# ── Layer 1: Null simulation ─────────────────────────────────────────────────
+# Layer 1: Null simulation ------------------------------------------------
 
 #' Run the null simulation (false positive assessment)
 #'
@@ -178,7 +178,7 @@ run_null_simulation <- function(wt_reps, config) {
 }
 
 
-# ── Layer 2: Spike-in simulation ─────────────────────────────────────────────
+# Layer 2: Spike-in simulation --------------------------------------------
 
 #' Run the spike-in simulation (sensitivity assessment)
 #'
@@ -324,7 +324,7 @@ run_spikein_simulation <- function(wt_reps, config) {
 }
 
 
-# ── Main entry point ─────────────────────────────────────────────────────────
+# Main entry point --------------------------------------------------------
 
 main <- function() {
   config <- parse_args()

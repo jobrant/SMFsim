@@ -7,7 +7,7 @@
 library(data.table)
 library(ggplot2)
 
-# ── Plotting theme ───────────────────────────────────────────────────────────
+# Plotting theme ----------------------------------------------------------
 
 theme_manuscript <- function(base_size = 12) {
   theme_minimal(base_size = base_size) +
@@ -35,7 +35,7 @@ method_labels <- c(
 )
 
 
-# ── Figure 1: Null simulation — false positive counts ────────────────────────
+# Figure 1: Null simulation — false positive counts -----------------------
 
 #' Bar plot of false positive DMR counts across scenarios and methods
 #'
@@ -72,7 +72,7 @@ plot_null_fp <- function(null_dt, out_dir = NULL) {
 }
 
 
-# ── Figure 2: Sensitivity curves ─────────────────────────────────────────────
+# Figure 2: Sensitivity curves --------------------------------------------
 
 #' Line plot of sensitivity vs effect size, faceted by efficiency scenario
 #'
@@ -115,7 +115,7 @@ plot_sensitivity_curves <- function(spikein_dt, out_dir = NULL) {
 }
 
 
-# ── Figure 3: F1 score heatmap ───────────────────────────────────────────────
+# Figure 3: F1 score heatmap ----------------------------------------------
 
 #' Heatmap of F1 scores across effect sizes and methods
 #'
@@ -156,7 +156,7 @@ plot_f1_heatmap <- function(spikein_dt, out_dir = NULL) {
 }
 
 
-# ── Figure 4: Precision-Recall tradeoff ──────────────────────────────────────
+# Figure 4: Precision-Recall tradeoff -------------------------------------
 
 #' Precision vs sensitivity scatter, one point per scenario × effect × method
 #'
@@ -191,7 +191,7 @@ plot_precision_recall <- function(spikein_dt, out_dir = NULL) {
 }
 
 
-# ── Figure 5: FDR comparison ────────────────────────────────────────────────
+# Figure 5: FDR comparison ------------------------------------------------
 
 #' FDR across methods and effect sizes
 #'
@@ -234,7 +234,7 @@ plot_fdr <- function(spikein_dt, out_dir = NULL) {
 }
 
 
-# ── Helper ───────────────────────────────────────────────────────────────────
+# Helper ------------------------------------------------------------------
 
 #' Save figure as PDF and PNG
 #' @keywords internal
@@ -251,7 +251,7 @@ plot_fdr <- function(spikein_dt, out_dir = NULL) {
 }
 
 
-# ── Generate all figures ─────────────────────────────────────────────────────
+# Generate all figures ----------------------------------------------------
 
 #' Generate all manuscript figures from saved simulation results
 #'

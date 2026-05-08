@@ -15,9 +15,7 @@ library(data.table)
 library(ggplot2)
 library(MAPitNorm)
 
-# source("R/uid_functions.R")
-
-# ── Data loading ─────────────────────────────────────────────────────────────
+# Data loading ------------------------------------------------------------
 
 #' Load and prepare real data for two-group comparison
 #'
@@ -70,7 +68,7 @@ load_real_data <- function(config, group_A = "PrEC", group_B = "PC3") {
 }
 
 
-# ── Method runners (generalized for real group names) ────────────────────────
+# Method runners ----------------------------------------------------------
 
 #' Format real data as pseudo_groups-style list for method runners
 #'
@@ -251,7 +249,7 @@ run_all_methods_real <- function(real_data,
 }
 
 
-# ── DMR calling (generalized group names) ────────────────────────────────────
+# DMR calling -------------------------------------------------------------
 
 #' Call DMRs with metilene using real group names
 #'
@@ -336,7 +334,7 @@ call_dmrs_real <- function(split_data,
 }
 
 
-# ── Comparison metrics ───────────────────────────────────────────────────────
+# Comparison metrics ------------------------------------------------------
 
 #' Compute pairwise DMR overlap between methods
 #'
@@ -465,7 +463,7 @@ classify_method_dmrs <- function(dmr_list,
 }
 
 
-# ── Visualization ────────────────────────────────────────────────────────────
+# Visualization -----------------------------------------------------------
 
 theme_manuscript <- function(base_size = 12) {
   theme_minimal(base_size = base_size) +
@@ -629,7 +627,7 @@ plot_overlap_heatmap <- function(overlap_dt, out_dir = NULL) {
 }
 
 
-# ── Main pipeline ────────────────────────────────────────────────────────────
+# Main pipeline -----------------------------------------------------------
 
 #' Run the full real data comparison
 #'
@@ -744,6 +742,5 @@ run_real_data_comparison <- function(config,
   )))
 }
 
-
-# ── Convenience null-coalescing operator ─────────────────────────────────────
+# Convenience null-coalescing operator ------------------------------------
 `%||%` <- function(x, y) if (is.null(x)) y else x
