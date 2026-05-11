@@ -14,12 +14,12 @@
 # =============================================================================
 
 library(data.table)
-library(MAPitNorm)
+library(SMFnorm)
 
 # Source simulation modules
-source("nome-simulator-9000/01_simulate_efficiency.R")
-source("nome-simulator-9000/02_run_methods.R")
-source("nome-simulator-9000/03_evaluate.R")
+source("SMFsim/01_simulate_efficiency.R")
+source("SMFsim/02_run_methods.R")
+source("SMFsim/03_evaluate.R")
 
 # Configuration -----------------------------------------------------------
 
@@ -34,14 +34,18 @@ parse_args <- function() {
     output_dir    = "results/simulation",
     metilene_path = "/apps/metilene/0.2.8/metilene",
     scenarios     = c("mild", "moderate", "severe"),
-    effect_sizes  = c(0.05, 0.10, 0.15, 0.20, 0.30),
+    effect_sizes  = c(0.10, 0.15, 0.20, 0.30),
     n_spikein_regions = 300,
     region_width_bp   = 500,
     wt_group_id       = "PrEC",   # normal prostate epithelial cells (3 reps)
     seed              = 42,
-    methods       = c("raw", "downsampled", "MAPitNorm", "ComBatMet"),
+    methods       = c("raw", "downsampled", "SMFsim", "ComBatMet"),
+    metilene_max_dist = 500,
     metilene_min_cpg  = 5,
-    metilene_min_diff = 0.1
+    metilene_min_diff = 0.1,
+    within_alpha = 0.03, 
+    between_alpha = 0.5, 
+    min_coverage = 5
   )
 
   # Override from command line if provided
@@ -51,7 +55,7 @@ parse_args <- function() {
     if (key %in% c("scenarios", "methods")) {
       config[[key]] <- strsplit(args[i + 1], ",")[[1]]
     } else if (key %in% c("seed", "n_spikein_regions", "region_width_bp",
-                           "metilene_min_cpg")) {
+                           "metilene_min_cpg", "metilene_max_dist")) {
       config[[key]] <- as.integer(args[i + 1])
     } else if (key %in% c("metilene_min_diff")) {
       config[[key]] <- as.numeric(args[i + 1])
@@ -133,7 +137,12 @@ run_null_simulation <- function(wt_reps, config) {
     # Run all normalization methods
     method_results <- run_all_methods(
       pseudo_groups = pseudo,
-      methods = config$methods
+      methods = config$methods, 
+      SMFnorm_params = list(
+        within_alpha = config$within_alpha,
+        between_alpha = config$between_alpha,
+        min_coverage = config$min_coverage %||% 5
+      )
     )
 
     # Call DMRs and classify for each method
@@ -150,7 +159,8 @@ run_null_simulation <- function(wt_reps, config) {
           out_dir = dmr_dir,
           metilene_path = config$metilene_path,
           min_cpg = config$metilene_min_cpg,
-          min_diff = config$metilene_min_diff
+          min_diff = config$metilene_min_diff, 
+          metilene_max_dist = config$metilene_mix_dist
         )
       }, error = function(e) {
         warning(sprintf("DMR calling failed for %s/%s: %s", sc_name, m_name, e$message))
@@ -195,12 +205,18 @@ run_spikein_simulation <- function(wt_reps, config) {
 
   # Select spike-in regions once (same regions for all scenarios)
   ref_dt <- wt_reps[[1]]
-  spikein_regions <- select_spikein_regions(
+  spikein_regions <- select_dense_spikein_regions(
     dt = ref_dt,
-    n_regions = config$n_spikein_regions,
-    region_width_bp = config$region_width_bp,
+    n_regions = 300,
+    region_width_bp = 2000,
+    min_sites = 10,
+    max_median_spacing = 200,
     seed = config$seed + 1000
   )
+  
+  message("Regions class: ", class(spikein_regions)[1])
+  message("Regions nrow: ", nrow(spikein_regions))
+  message("Regions names: ", paste(names(spikein_regions), collapse = ", "))
 
   # Save regions for reference
   regions_path <- file.path(config$output_dir, "spikein_regions.csv")
@@ -265,7 +281,12 @@ run_spikein_simulation <- function(wt_reps, config) {
       # Step 3: Run all normalization methods
       method_results <- run_all_methods(
         pseudo_groups = pseudo,
-        methods = config$methods
+        methods = config$methods, 
+        SMFnorm_params = list(
+          within_alpha = config$within_alpha,
+          between_alpha = config$between_alpha,
+          min_coverage = config$min_coverage %||% 5
+        )
       )
 
       # Step 4: Call DMRs and evaluate
@@ -283,7 +304,8 @@ run_spikein_simulation <- function(wt_reps, config) {
             out_dir = dmr_dir,
             metilene_path = config$metilene_path,
             min_cpg = config$metilene_min_cpg,
-            min_diff = config$metilene_min_diff
+            min_diff = config$metilene_min_diff, 
+            metilene_max_dist = config$metilene_max_dist
           )
         }, error = function(e) {
           warning(sprintf("DMR calling failed for %s/%s/effect%.2f: %s",

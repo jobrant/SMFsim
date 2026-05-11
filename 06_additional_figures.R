@@ -24,14 +24,14 @@ theme_manuscript <- function(base_size = 12) {
 method_colors <- c(
   "raw"         = "#E41A1C",
   "downsampled" = "#377EB8",
-  "MAPitNorm"   = "#4DAF4A",
+  "SMFnorm"   = "#4DAF4A",
   "ComBatMet"   = "#984EA3"
 )
 
 method_labels <- c(
   "raw"         = "Raw",
   "downsampled" = "Downsampled",
-  "MAPitNorm"   = "MAPitNorm",
+  "SMFnorm"   = "SMFnorm",
   "ComBatMet"   = "ComBatMet"
 )
 
@@ -80,7 +80,7 @@ plot_sensitivity_precision_panels <- function(spikein_dt, out_dir = NULL) {
     scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
     labs(
       title = "Sensitivity vs Precision Across Normalization Methods",
-      subtitle = "MAPitNorm trades modest sensitivity for near-perfect precision under efficiency artifacts",
+      subtitle = "SMFnorm trades modest sensitivity for near-perfect precision under efficiency artifacts",
       x = "Effect Size (Rate Difference)",
       y = NULL,
       color = "Method", shape = "Method"
@@ -131,7 +131,7 @@ plot_call_breakdown <- function(spikein_dt, out_dir = NULL) {
     scale_fill_manual(values = c("True Positive" = "#4DAF4A", "False Positive" = "#E41A1C")) +
     labs(
       title = "Composition of DMR Calls by Method",
-      subtitle = "MAPitNorm calls are almost exclusively true positives; other methods are dominated by false positives",
+      subtitle = "SMFnorm calls are almost exclusively true positives; other methods are dominated by false positives",
       x = "Effect Size",
       y = "Number of DMRs Called",
       fill = NULL
@@ -186,7 +186,7 @@ plot_researcher_view <- function(spikein_dt, target_effect = 0.3, out_dir = NULL
     scale_x_discrete(labels = method_labels) +
     labs(
       title = paste0("What a Researcher Sees: DMR Calls at Effect Size = ", target_effect),
-      subtitle = "Point color shows the fraction of calls that are genuine; MAPitNorm's calls are 100% real",
+      subtitle = "Point color shows the fraction of calls that are genuine; SMFnorm's calls are 100% real",
       x = NULL,
       y = "Total DMRs Called"
     ) +
@@ -231,7 +231,7 @@ plot_f1_lines <- function(spikein_dt, out_dir = NULL) {
     scale_y_continuous(limits = c(0, 0.75), breaks = seq(0, 0.75, 0.15)) +
     labs(
       title = "F1 Score: Balancing Sensitivity and Precision",
-      subtitle = "Under moderate-to-severe distortion, MAPitNorm achieves the best balance",
+      subtitle = "Under moderate-to-severe distortion, SMFnorm achieves the best balance",
       x = "Effect Size (Rate Difference)",
       y = "F1 Score",
       color = "Method", shape = "Method"

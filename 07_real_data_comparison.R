@@ -13,7 +13,7 @@
 
 library(data.table)
 library(ggplot2)
-library(MAPitNorm)
+library(SMFnorm)
 
 # Data loading ------------------------------------------------------------
 
@@ -93,12 +93,12 @@ format_real_data <- function(real_data) {
 #'
 #' @param real_data List from load_real_data().
 #' @param methods Character vector of methods to run.
-#' @param mapitnorm_params Named list of MAPitNorm parameters.
+#' @param SMFnorm_params Named list of SMFnorm parameters.
 #' @return Named list of results per method, each with $data (split by group).
 run_all_methods_real <- function(real_data,
                                  methods = c("raw", "downsampled",
-                                             "MAPitNorm", "ComBatMet"),
-                                 mapitnorm_params = list(
+                                             "SMFnorm", "ComBatMet"),
+                                 SMFnorm_params = list(
                                    within_alpha = 0.3,
                                    between_alpha = 0.5,
                                    min_coverage = 5
@@ -156,9 +156,9 @@ run_all_methods_real <- function(real_data,
           list(method = "downsampled", data = split_data)
         },
 
-        MAPitNorm = {
-          message("Method: MAPitNorm")
-          # Build nested list with metadata for MAPitNorm
+        SMFnorm = {
+          message("Method: SMFnorm")
+          # Build nested list with metadata for SMFnorm
           all_samples <- c(data_A, data_B)
           sample_ids <- names(all_samples)
           group_ids <- c(rep(group_A_name, length(data_A)),
@@ -172,19 +172,19 @@ run_all_methods_real <- function(real_data,
           )
           attr(all_samples, "sample_metadata") <- metadata
 
-          split_data <- MAPitNorm::split_by_groups(all_samples)
-          normalized <- MAPitNorm::normalize_methylation_data(
+          split_data <- SMFnorm::split_by_groups(all_samples)
+          normalized <- SMFnorm::normalize_methylation_data(
             data_list = split_data,
             do_coverage_norm = TRUE,
             normalize_rates = TRUE,
             coverage_between_groups = FALSE,
             rate_within_groups = TRUE,
             rate_between_groups = FALSE,
-            within_alpha = mapitnorm_params$within_alpha,
-            between_alpha = mapitnorm_params$between_alpha,
-            min_coverage = mapitnorm_params$min_coverage
+            within_alpha = SMFnorm_params$within_alpha,
+            between_alpha = SMFnorm_params$between_alpha,
+            min_coverage = SMFnorm_params$min_coverage
           )
-          list(method = "MAPitNorm", data = normalized)
+          list(method = "SMFnorm", data = normalized)
         },
 
         ComBatMet = {
@@ -480,7 +480,7 @@ theme_manuscript <- function(base_size = 12) {
 method_colors <- c(
   "raw"         = "#E41A1C",
   "downsampled" = "#377EB8",
-  "MAPitNorm"   = "#4DAF4A",
+  "SMFnorm"   = "#4DAF4A",
   "ComBatMet"   = "#984EA3"
 )
 

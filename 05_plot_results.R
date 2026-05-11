@@ -23,14 +23,14 @@ theme_manuscript <- function(base_size = 12) {
 method_colors <- c(
   "raw"         = "#E41A1C",
   "downsampled" = "#377EB8",
-  "MAPitNorm"   = "#4DAF4A",
+  "SMFnorm"   = "#4DAF4A",
   "ComBatMet"   = "#984EA3"
 )
 
 method_labels <- c(
   "raw"         = "Raw (no normalization)",
   "downsampled" = "Downsampled",
-  "MAPitNorm"   = "MAPitNorm",
+  "SMFnorm"   = "SMFnorm",
   "ComBatMet"   = "ComBatMet"
 )
 
