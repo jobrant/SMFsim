@@ -8,13 +8,13 @@ library(data.table)
 
 # Format helpers ----------------------------------------------------------
 
-#' Convert pseudo-group data to the format expected by MAPitNorm
+#' Convert pseudo-group data to the format expected by SMFnorm
 #'
 #' Builds a nested list with sample_metadata attribute, mimicking load_data() output.
 #'
 #' @param pseudo_groups List from create_pseudo_groups() with PseudoA and PseudoB.
 #' @return List structured as load_data() output (flat sample list with metadata).
-format_for_mapinorm <- function(pseudo_groups) {
+format_for_smfnorm <- function(pseudo_groups) {
   all_samples <- c(pseudo_groups$PseudoA, pseudo_groups$PseudoB)
 
   # Build sample metadata
@@ -146,41 +146,41 @@ run_downsampled <- function(pseudo_groups) {
 }
 
 
-# Method: MAPitNorm -------------------------------------------------------
+# Method: SMFnorm -------------------------------------------------------
 
-#' Run MAPitNorm normalization pipeline
+#' Run SMFnorm normalization pipeline
 #'
 #' @param pseudo_groups List from create_pseudo_groups().
 #' @param within_alpha Alpha for within-group rate normalization.
 #' @param between_alpha Alpha for between-group rate normalization.
 #' @param min_coverage Minimum coverage threshold.
-#' @return Named list with method = "MAPitNorm" and normalized split data.
-run_mapitnorm <- function(pseudo_groups,
+#' @return Named list with method = "SMFnorm" and normalized split data.
+run_SMFnorm <- function(pseudo_groups,
                            within_alpha = 0.3,
                            between_alpha = 0.5,
                            min_coverage = 5) {
-  message("Method: MAPitNorm")
+  message("Method: SMFnorm")
 
-  # Format as MAPitNorm expects
-  formatted <- format_for_mapinorm(pseudo_groups)
+  # Format as SMFnorm expects
+  formatted <- format_for_smfnorm(pseudo_groups)
 
   # Split by groups
-  split_data <- MAPitNorm::split_by_groups(formatted)
+  split_data <- SMFnorm::split_by_groups(formatted)
 
   # Run full normalization
-  normalized <- MAPitNorm::normalize_methylation_data(
+  normalized <- SMFnorm::normalize_methylation_data(
     data_list = split_data,
     do_coverage_norm = TRUE,
     normalize_rates = TRUE,
     coverage_between_groups = FALSE,
     rate_within_groups = TRUE,
-    rate_between_groups = TRUE,
+    rate_between_groups = FALSE,
     within_alpha = within_alpha,
     between_alpha = between_alpha,
     min_coverage = min_coverage
   )
 
-  return(list(method = "MAPitNorm", data = normalized))
+  return(list(method = "SMFnorm", data = normalized))
 }
 
 
@@ -408,8 +408,8 @@ call_dmrs_metilene <- function(split_data,
 }
 
 run_all_methods <- function(pseudo_groups,
-                            methods = c("raw", "downsampled", "MAPitNorm", "ComBatMet"),
-                            mapitnorm_params = list(
+                            methods = c("raw", "downsampled", "SMFnorm", "ComBatMet"),
+                            SMFnorm_params = list(
                               within_alpha = 0.3,
                               between_alpha = 0.5,
                               min_coverage = 5
@@ -431,8 +431,8 @@ run_all_methods <- function(pseudo_groups,
       switch(m,
              raw = run_raw(pseudo_copy),
              downsampled = run_downsampled(pseudo_copy),
-             MAPitNorm = do.call(run_mapitnorm, c(list(pseudo_groups = pseudo_copy),
-                                                  mapitnorm_params)),
+             SMFnorm = do.call(run_SMFnorm, c(list(pseudo_groups = pseudo_copy),
+                                                  SMFnorm_params)),
              ComBatMet = run_combatmet(pseudo_copy),
              stop("Unknown method: ", m)
       )
@@ -459,7 +459,7 @@ run_all_methods <- function(pseudo_groups,
 #'
 #' @param pseudo_groups List from create_pseudo_groups().
 #' @param methods Character vector of methods to run.
-#'   Options: "raw", "downsampled", "MAPitNorm", "ComBatMet"
-#' @param mapitnorm_params Named list of MAPitNorm parameters.
+#'   Options: "raw", "downsampled", "SMFnorm", "ComBatMet"
+#' @param SMFnorm_params Named list of SMFnorm parameters.
 #' @return Named list of results, each with $method and $data.
 

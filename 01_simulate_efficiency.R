@@ -351,5 +351,5 @@ get_efficiency_scenarios <- function() {
 #'
 #' @return Numeric vector of effect sizes to test.
 get_effect_sizes <- function() {
-  c(0.05, 0.10, 0.15, 0.20, 0.30)
+  c(0.10, 0.15, 0.20, 0.30)
 }
