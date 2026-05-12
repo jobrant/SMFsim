@@ -1,8 +1,7 @@
 #!/usr/bin/env Rscript
-# =============================================================================
+
 # 02_run_methods.R
 # Apply normalization methods to simulated data and call DMRs
-# =============================================================================
 
 library(data.table)
 
@@ -156,9 +155,9 @@ run_downsampled <- function(pseudo_groups) {
 #' @param min_coverage Minimum coverage threshold.
 #' @return Named list with method = "SMFnorm" and normalized split data.
 run_SMFnorm <- function(pseudo_groups,
-                           within_alpha = 0.3,
-                           between_alpha = 0.5,
-                           min_coverage = 5) {
+                        within_alpha = 0.3,
+                        between_alpha = 0.5,
+                        min_coverage = 5) {
   message("Method: SMFnorm")
 
   # Format as SMFnorm expects
@@ -407,6 +406,16 @@ call_dmrs_metilene <- function(split_data,
   return(out_path)
 }
 
+
+# Master method runner ----------------------------------------------------
+
+#' Run all normalization methods on pseudo-group data
+#'
+#' @param pseudo_groups List from create_pseudo_groups().
+#' @param methods Character vector of methods to run.
+#'   Options: "raw", "downsampled", "SMFnorm", "ComBatMet"
+#' @param SMFnorm_params Named list of SMFnorm parameters.
+#' @return Named list of results, each with $method and $data.
 run_all_methods <- function(pseudo_groups,
                             methods = c("raw", "downsampled", "SMFnorm", "ComBatMet"),
                             SMFnorm_params = list(
@@ -453,13 +462,4 @@ run_all_methods <- function(pseudo_groups,
   return(results)
 }
 
-# Master method runner ----------------------------------------------------
-
-#' Run all normalization methods on pseudo-group data
-#'
-#' @param pseudo_groups List from create_pseudo_groups().
-#' @param methods Character vector of methods to run.
-#'   Options: "raw", "downsampled", "SMFnorm", "ComBatMet"
-#' @param SMFnorm_params Named list of SMFnorm parameters.
-#' @return Named list of results, each with $method and $data.
 

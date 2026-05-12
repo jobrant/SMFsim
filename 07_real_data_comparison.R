@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# =============================================================================
+
 # 07_real_data_comparison.R
 # Compare normalization methods on real biological data (PC3 vs PrEC)
 #
@@ -9,7 +9,6 @@
 #   3. Effect size distributions per method
 #   4. Genomic feature enrichment of method-specific DMRs
 #   5. (Optional) Concordance with orthogonal ATAC-seq data
-# =============================================================================
 
 library(data.table)
 library(ggplot2)
@@ -581,6 +580,7 @@ plot_lost_dmr_effects <- function(dmr_list, classification, out_dir = NULL) {
 
     if (!is.null(out_dir)) .save_figure(p, paste0("fig_real_lost_", tolower(m)), out_dir)
     plots[[m]] <- p
+    
   }
 
   return(plots)
