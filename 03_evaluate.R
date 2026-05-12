@@ -1,8 +1,7 @@
 #!/usr/bin/env Rscript
-# =============================================================================
+
 # 03_evaluate.R
 # Evaluate DMR calls: classify TP/FP/FN and compute performance metrics
-# =============================================================================
 
 library(data.table)
 

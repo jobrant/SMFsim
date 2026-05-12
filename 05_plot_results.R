@@ -1,8 +1,7 @@
 #!/usr/bin/env Rscript
-# =============================================================================
+
 # 05_plot_results.R
 # Generate publication-quality figures from simulation results
-# =============================================================================
 
 library(data.table)
 library(ggplot2)
