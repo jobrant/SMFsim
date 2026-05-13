@@ -3,8 +3,6 @@
 # 06_additional_figures.R
 # Additional figures to better illustrate the precision-sensitivity tradeoff
 
-library(data.table)
-library(ggplot2)
 
 # Plotting theme and shared aesthetics ------------------------------------
 

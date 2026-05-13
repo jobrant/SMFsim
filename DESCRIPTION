@@ -1,0 +1,25 @@
+Package: SMFsim
+Title: SMFsim: Single Molecule Footprinting Data simulation framework
+Version: 0.0.0.9000
+Authors@R: 
+    person("Jason", "Orr", "Brant", "jobrant@ufl.edu", role = c("aut", "cre"))
+Description: Exogenous methyltransferase assays (MAPit, NOMe-seq, Fiber-seq) probe 
+    chromatin accessibility by treating genomic DNA with GpC methyltransferase (M.CviPI). 
+    Variation in enzyme efficiency between samples introduces systematic artifacts 
+    that can be mistaken for biological differences. Existing normalization approaches, 
+    including downsampling and ComBat-based batch correction, are not designed for this 
+    problem and can either amplify false positives or eliminate genuine biological signal.
+    .
+    This framework provides a rigorous, simulation-based evaluation of how well different normalization methods separate technical artifacts from real biology.
+License: GPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.0.0
+Imports: 
+    data.table,
+    ggplot2,
+    SMFnorm
+Suggests: 
+    GenomicRanges,
+    IRanges,
+    S4Vectors

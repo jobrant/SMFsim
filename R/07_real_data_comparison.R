@@ -10,9 +10,6 @@
 #   4. Genomic feature enrichment of method-specific DMRs
 #   5. (Optional) Concordance with orthogonal ATAC-seq data
 
-library(data.table)
-library(ggplot2)
-library(SMFnorm)
 
 # Data loading ------------------------------------------------------------
 

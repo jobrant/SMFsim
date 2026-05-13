@@ -20,14 +20,6 @@
 # 3. Dense region selection for spike-in placement
 
 
-library(data.table)
-library(SMFnorm)
-
-# Source simulation modules
-source("SMFsim/01_simulate_efficiency.R")
-source("SMFsim/02_run_methods.R")
-source("SMFsim/03_evaluate.R")
-
 # Configuration -----------------------------------------------------------
 
 #' Parse command line arguments or use defaults
