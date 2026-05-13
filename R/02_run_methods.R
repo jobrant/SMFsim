@@ -3,7 +3,6 @@
 # 02_run_methods.R
 # Apply normalization methods to simulated data and call DMRs
 
-library(data.table)
 
 # Format helpers ----------------------------------------------------------
 

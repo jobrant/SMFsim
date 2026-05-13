@@ -8,8 +8,6 @@
 # different days with varying enzyme efficiencies. Both groups span similar
 # efficiency ranges with no systematic between-group bias.
 
-library(data.table)
-
 # Enzyme efficiency simulation --------------------------------------------
 
 #' Simulate enzyme efficiency distortion on a single sample
