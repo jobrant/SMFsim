@@ -1,24 +1,15 @@
 setwd("/orange/paefron/jobrant/NOME-SEQ/mapitnorm_testing/simulation")
 
 devtools::install_github("jobrant/SMFnorm")
+devtools::install_github("jobrant/SMFsim")
 
 
 x <- c("ggplot2", "RColorBrewer", "data.table", "sva", "GenomicRanges", 
-       "TxDb.Hsapiens.UCSC.hg38.knownGene", "IRanges", "S4Vectors", "SMFnorm")
+       "TxDb.Hsapiens.UCSC.hg38.knownGene", "IRanges", "S4Vectors", 
+       "SMFnorm", "SMFsim")
 lapply(x, require, character.only = TRUE)
 
 #rm(list = ls())
-
-source("SMFsim/01_simulate_efficiency.R")
-source("SMFsim/02_run_methods.R")
-source("SMFsim/03_evaluate.R")
-source("SMFsim/04_run_simulation.R")
-source("SMFsim/05_plot_results.R")
-source("SMFsim/06_additional_figures.R")
-source("SMFsim/07_real_data_comparison.R")
-source("SMFsim/select_promoter_spikein_regions.R")
-source("SMFsim/select_dense_spikein_regions.R")
-
 
 # Set up config
 config <- list(
