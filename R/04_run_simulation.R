@@ -246,7 +246,7 @@ run_spikein_simulation <- function(wt_reps, config) {
           dt = wt_reps[[i]],
           regions = spikein_regions,
           effect_size = effect,
-          direction = "both",
+          direction = "auto",
           seed = config$seed + 2000 + i
         )
         injection$data

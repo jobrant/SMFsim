@@ -397,24 +397,38 @@ select_dense_spikein_regions <- function(dt,
 #' For sites within spike-in regions, shift the methylation rate by a specified
 #' effect size, then resample mc from Binomial(cov, new_rate).
 #'
+#' Direction is chosen based on the mean baseline rate of each region to
+#' maximize the achievable effect. Regions with high baseline rates receive
+#' decreasing effects; regions with low baseline rates receive increasing
+#' effects. This avoids wasting injections on clamped sites that cannot
+#' move in the chosen direction.
+#'
 #' @param dt data.table of methylation data for one sample.
 #' @param regions data.table of spike-in regions (from select_spikein_regions
 #'   or select_dense_spikein_regions).
-#' @param effect_size Numeric scalar: amount to shift rates (positive = increase).
-#' @param direction Character: "increase", "decrease", or "both" (random per region).
+#' @param effect_size Numeric scalar: amount to shift rates.
+#' @param direction Character: "auto" (default, rate-aware), "increase",
+#'   "decrease", or "both" (random per region, legacy behavior).
+#' @param low_rate_threshold Numeric: regions with mean rate below this get
+#'   "increase" direction. Default 0.4.
+#' @param high_rate_threshold Numeric: regions with mean rate above this get
+#'   "decrease" direction. Default 0.6.
 #' @param seed Random seed.
 #' @return List with:
 #'   \item{data}{Modified data.table}
 #'   \item{truth}{data.table mapping region_id to injected effect per site}
+#'   \item{stats}{Summary of achievable effects across regions}
 inject_spikein_dmrs <- function(dt,
                                 regions,
                                 effect_size = 0.15,
-                                direction = "both",
+                                direction = "auto",
+                                low_rate_threshold = 0.4,
+                                high_rate_threshold = 0.6,
                                 seed = NULL) {
   stopifnot(
     is.data.table(dt),
     is.data.table(regions),
-    direction %in% c("increase", "decrease", "both")
+    direction %in% c("auto", "increase", "decrease", "both")
   )
   
   if (!is.null(seed)) set.seed(seed)
@@ -423,6 +437,9 @@ inject_spikein_dmrs <- function(dt,
   
   # Track ground truth
   truth_list <- list()
+  n_injected <- 0L
+  n_skipped <- 0L
+  achievable_effects <- numeric(nrow(regions))
   
   for (i in seq_len(nrow(regions))) {
     r <- regions[i]
@@ -430,20 +447,41 @@ inject_spikein_dmrs <- function(dt,
     # Find sites in this region
     site_idx <- which(out$chr == r$chr & out$pos >= r$start & out$pos <= r$end)
     
-    if (length(site_idx) == 0) next
-    
-    # Determine direction for this region
-    if (direction == "both") {
-      dir_sign <- sample(c(1, -1), 1)
-    } else if (direction == "increase") {
-      dir_sign <- 1
-    } else {
-      dir_sign <- -1
+    if (length(site_idx) == 0) {
+      n_skipped <- n_skipped + 1L
+      next
     }
     
-    # Shift rates
     old_rates <- out$rate[site_idx]
+    mean_rate <- mean(old_rates)
+    
+    # Determine direction
+    dir_sign <- if (direction == "auto") {
+      if (mean_rate < low_rate_threshold) {
+        1L   # room to increase
+      } else if (mean_rate > high_rate_threshold) {
+        -1L  # room to decrease
+      } else {
+        # Middle range: pick direction with most room to move
+        room_up   <- 1 - mean_rate
+        room_down <- mean_rate
+        if (room_up >= room_down) 1L else -1L
+      }
+    } else if (direction == "increase") {
+      1L
+    } else if (direction == "decrease") {
+      -1L
+    } else {
+      # "both" — legacy random behavior
+      sample(c(1L, -1L), 1L)
+    }
+    
+    # Compute new rates
     new_rates <- pmin(1, pmax(0, old_rates + dir_sign * effect_size))
+    
+    # Track achievable effect (actual mean shift after clamping)
+    actual_mean_effect <- mean(new_rates - old_rates)
+    achievable_effects[i] <- actual_mean_effect
     
     # Resample mc from Binomial(cov, new_rate)
     covs <- out$cov[site_idx]
@@ -451,24 +489,44 @@ inject_spikein_dmrs <- function(dt,
     
     out[site_idx, `:=`(mc = new_mc, rate = ifelse(cov > 0, new_mc / cov, 0))]
     
-    # Record truth
     truth_list[[i]] <- data.table(
-      region_id = r$region_id,
-      chr = r$chr,
-      pos = out$pos[site_idx],
+      region_id     = r$region_id,
+      chr           = r$chr,
+      pos           = out$pos[site_idx],
       original_rate = old_rates,
       injected_rate = new_rates,
-      actual_effect = dir_sign * effect_size,
-      direction = ifelse(dir_sign == 1, "increase", "decrease")
+      actual_effect = new_rates - old_rates,
+      direction     = ifelse(dir_sign == 1L, "increase", "decrease"),
+      mean_baseline = mean_rate
     )
+    
+    n_injected <- n_injected + 1L
   }
   
   truth <- rbindlist(truth_list)
-  message(sprintf("Injected DMRs in %d regions (%d sites affected, effect = %.2f)",
-                  nrow(regions), nrow(truth), effect_size))
   
-  return(list(data = out, truth = truth))
+  # Summary statistics
+  achievable_effects <- achievable_effects[achievable_effects != 0]
+  stats <- list(
+    n_regions_injected = n_injected,
+    n_regions_skipped  = n_skipped,
+    n_sites_affected   = nrow(truth),
+    mean_achievable_effect = mean(abs(achievable_effects)),
+    median_achievable_effect = median(abs(achievable_effects)),
+    pct_regions_gt_half_effect = mean(abs(achievable_effects) >= effect_size / 2) * 100
+  )
+  
+  message(sprintf(
+    "Injected DMRs in %d regions (%d sites, effect=%.2f, median achievable=%.3f, %.0f%% >%.2f)",
+    n_injected, nrow(truth), effect_size,
+    stats$median_achievable_effect,
+    stats$pct_regions_gt_half_effect,
+    effect_size / 2
+  ))
+  
+  return(list(data = out, truth = truth, stats = stats))
 }
+
 
 
 # Scenario definitions ----------------------------------------------------
