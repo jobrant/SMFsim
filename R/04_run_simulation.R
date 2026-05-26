@@ -348,6 +348,9 @@ run_spikein_simulation <- function(wt_reps, config) {
 
 # Main entry point --------------------------------------------------------
 
+#' Run the full simulation benchmark
+#' 
+#' @export 
 main <- function() {
   config <- parse_args()
 
@@ -390,10 +393,4 @@ main <- function() {
 
   message("\nSpike-in simulation summary:")
   print(spikein_results)
-}
-
-
-# Run if called as a script
-if (!interactive()) {
-  main()
 }

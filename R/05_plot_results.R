@@ -5,7 +5,6 @@
 
 
 # Plotting theme ----------------------------------------------------------
-
 theme_manuscript <- function(base_size = 12) {
   theme_minimal(base_size = base_size) +
     theme(
