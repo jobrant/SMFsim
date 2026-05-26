@@ -1,15 +1,12 @@
-setwd("/orange/paefron/jobrant/NOME-SEQ/mapitnorm_testing/simulation")
+# Example code snippet of a typical run of SMFsim simulation code
 
 devtools::install_github("jobrant/SMFnorm")
 devtools::install_github("jobrant/SMFsim")
-
 
 x <- c("ggplot2", "RColorBrewer", "data.table", "sva", "GenomicRanges", 
        "TxDb.Hsapiens.UCSC.hg38.knownGene", "IRanges", "S4Vectors", 
        "SMFnorm", "SMFsim")
 lapply(x, require, character.only = TRUE)
-
-#rm(list = ls())
 
 # Set up config
 config <- list(
