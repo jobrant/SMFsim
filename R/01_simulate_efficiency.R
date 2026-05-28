@@ -293,6 +293,7 @@ select_spikein_regions <- function(dt,
 #' @param max_median_spacing Maximum median inter-site spacing in bp.
 #' @param seed Random seed.
 #' @return data.table with columns: region_id, chr, start, end, n_sites, median_spacing
+#' @noRd
 select_dense_spikein_regions <- function(dt,
                                          n_regions = 300,
                                          region_width_bp = 2000,
@@ -418,6 +419,7 @@ select_dense_spikein_regions <- function(dt,
 #'   \item{data}{Modified data.table}
 #'   \item{truth}{data.table mapping region_id to injected effect per site}
 #'   \item{stats}{Summary of achievable effects across regions}
+#' @noRd
 inject_spikein_dmrs <- function(dt,
                                 regions,
                                 effect_size = 0.15,

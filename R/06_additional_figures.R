@@ -263,6 +263,7 @@ plot_f1_lines <- function(spikein_dt, out_dir = NULL) {
 #'
 #' @param results_file Path to all_results.rds or the spikein CSV.
 #' @param out_dir Output directory for figures.
+#' @export
 generate_additional_figures <- function(results_file, out_dir = "results/figures") {
 
   if (grepl("\\.rds$", results_file)) {
