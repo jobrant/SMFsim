@@ -253,6 +253,7 @@ plot_fdr <- function(spikein_dt, out_dir = NULL) {
 #'
 #' @param results_file Path to all_results.rds from run_simulation.
 #' @param out_dir Output directory for figures.
+#' @export
 generate_all_figures <- function(results_file, out_dir = "results/figures") {
   results <- readRDS(results_file)
 

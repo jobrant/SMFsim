@@ -23,6 +23,7 @@
 # Configuration -----------------------------------------------------------
 
 #' Parse command line arguments or use defaults
+#' @export
 parse_args <- function() {
   args <- commandArgs(trailingOnly = TRUE)
 
@@ -112,6 +113,7 @@ prepare_wt_replicates <- function(config) {
 #' @param wt_reps Named list of WT replicate data.tables.
 #' @param config Configuration list.
 #' @return data.table of null simulation results (FP counts by scenario × method).
+#' @export
 run_null_simulation <- function(wt_reps, config) {
   message("\n", strrep("=", 60))
   message("LAYER 1: NULL SIMULATION (False Positive Assessment)")
@@ -196,6 +198,7 @@ run_null_simulation <- function(wt_reps, config) {
 #' @param wt_reps Named list of WT replicate data.tables.
 #' @param config Configuration list.
 #' @return data.table of spike-in results by scenario × effect_size × method.
+#' @export
 run_spikein_simulation <- function(wt_reps, config) {
   message("\n", strrep("=", 60))
   message("LAYER 2: SPIKE-IN SIMULATION (Sensitivity Assessment)")

@@ -633,6 +633,7 @@ plot_overlap_heatmap <- function(overlap_dt, out_dir = NULL) {
 #' @param group_B Name of the cancer/test group.
 #' @param out_dir Output directory.
 #' @return List of all results and figures.
+#' @export
 run_real_data_comparison <- function(config,
                                      group_A = "PrEC",
                                      group_B = "PC3",
