@@ -35,8 +35,7 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL) {
   out <- copy(dt)
   
   # Binomial resampling: each methylated read is retained with prob = efficiency
-  mc_int <- pmax(0L, as.integer(round(out$mc)))
-  out[, mc := rbinom(.N, size = mc_int, prob = efficiency)]
+  out[, mc := rbinom(.N, size = pmax(0L, as.integer(round(mc))), prob = efficiency)]
   out[, rate := ifelse(cov > 0, mc / cov, 0)]
   
   return(out)
