@@ -35,8 +35,11 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL) {
   out <- copy(dt)
   
   # Binomial resampling: each methylated read is retained with prob = efficiency
-  out[, mc := rbinom(.N, size = pmax(0L, as.integer(round(mc))), prob = efficiency)]
-  out[, rate := ifelse(cov > 0, mc / cov, 0)]
+  mc_new <- rbinom(nrow(out), 
+                   size = pmax(0L, as.integer(round(out$mc))), 
+                   prob = efficiency)
+  set(out, j = "mc", value = mc_new)
+  set(out, j = "rate", value = ifelse(out$cov > 0, out$mc / out$cov, 0))
   
   return(out)
 }
@@ -487,8 +490,9 @@ inject_spikein_dmrs <- function(dt,
     # Resample mc from Binomial(cov, new_rate)
     covs <- out$cov[site_idx]
     new_mc <- rbinom(length(site_idx), size = as.integer(covs), prob = new_rates)
-    
-    out[site_idx, `:=`(mc = new_mc, rate = ifelse(cov > 0, new_mc / cov, 0))]
+    set(out, i = site_idx, j = "mc", value = new_mc)
+    set(out, i = site_idx, j = "rate", 
+        value = ifelse(out$cov[site_idx] > 0, new_mc / out$cov[site_idx], 0))
     
     truth_list[[i]] <- data.table(
       region_id     = r$region_id,
