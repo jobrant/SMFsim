@@ -566,7 +566,7 @@ get_efficiency_scenarios <- function() {
       # Group A: mean ~ 0.83, range 0.70-0.95
       efficiency_A = c(0.95, 0.70, 0.85),
       # Group B: mean ~ 0.83, range 0.65-0.95
-      efficiency_B = c(0.90, 0.65, 0.95)
+      efficiency_B = c(0.65, 0.95, 0.90)
     ),
     severe = list(
       label = "Severe within-group variation (sd ~ 0.17)",
