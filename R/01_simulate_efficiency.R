@@ -557,9 +557,9 @@ get_efficiency_scenarios <- function() {
     mild = list(
       label = "Mild within-group variation (sd ~ 0.04)",
       # Group A: mean ~ 0.90, range 0.85-0.95
-      efficiency_A = c(0.95, 0.88, 0.87),
+      efficiency_A = c(0.95, 0.70, 0.85),
       # Group B: mean ~ 0.90, range 0.86-0.93
-      efficiency_B = c(0.86, 0.93, 0.90)
+      efficiency_B = c(0.90, 0.65, 0.80)
     ),
     moderate = list(
       label = "Moderate within-group variation (sd ~ 0.10)",
