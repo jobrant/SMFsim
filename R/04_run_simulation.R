@@ -79,6 +79,7 @@ parse_args <- function() {
 #'
 #' @param config Configuration list from parse_args().
 #' @return Named list of WT replicate data.tables (post shared-site filtering).
+#' @export
 prepare_wt_replicates <- function(config) {
   message("\n", strrep("=", 60))
   message("STEP 0: Loading and preparing WT replicates")
