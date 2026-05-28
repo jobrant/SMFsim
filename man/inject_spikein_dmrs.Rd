@@ -8,7 +8,9 @@ inject_spikein_dmrs(
   dt,
   regions,
   effect_size = 0.15,
-  direction = "both",
+  direction = "auto",
+  low_rate_threshold = 0.4,
+  high_rate_threshold = 0.6,
   seed = NULL
 )
 }
@@ -18,9 +20,16 @@ inject_spikein_dmrs(
 \item{regions}{data.table of spike-in regions (from select_spikein_regions
 or select_dense_spikein_regions).}
 
-\item{effect_size}{Numeric scalar: amount to shift rates (positive = increase).}
+\item{effect_size}{Numeric scalar: amount to shift rates.}
 
-\item{direction}{Character: "increase", "decrease", or "both" (random per region).}
+\item{direction}{Character: "auto" (default, rate-aware), "increase",
+"decrease", or "both" (random per region, legacy behavior).}
+
+\item{low_rate_threshold}{Numeric: regions with mean rate below this get
+"increase" direction. Default 0.4.}
+
+\item{high_rate_threshold}{Numeric: regions with mean rate above this get
+"decrease" direction. Default 0.6.}
 
 \item{seed}{Random seed.}
 }
@@ -28,8 +37,16 @@ or select_dense_spikein_regions).}
 List with:
 \item{data}{Modified data.table}
 \item{truth}{data.table mapping region_id to injected effect per site}
+\item{stats}{Summary of achievable effects across regions}
 }
 \description{
 For sites within spike-in regions, shift the methylation rate by a specified
 effect size, then resample mc from Binomial(cov, new_rate).
+}
+\details{
+Direction is chosen based on the mean baseline rate of each region to
+maximize the achievable effect. Regions with high baseline rates receive
+decreasing effects; regions with low baseline rates receive increasing
+effects. This avoids wasting injections on clamped sites that cannot
+move in the chosen direction.
 }
