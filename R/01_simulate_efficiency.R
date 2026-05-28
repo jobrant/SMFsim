@@ -105,7 +105,7 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL) {
 #'   \item{params}{List recording simulation parameters}
 create_pseudo_groups <- function(replicates,
                                  efficiency_A = c(0.95, 0.70, 0.85),
-                                 efficiency_B = c(0.90, 0.65, 0.80),
+                                 efficiency_B = c(0.65, 0.95, 0.85),
                                  mode = c("clone", "split"),
                                  seed = 42) {
   mode <- match.arg(mode)
