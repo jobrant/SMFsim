@@ -10,37 +10,123 @@
 
 # Enzyme efficiency simulation --------------------------------------------
 
+#' Draw counts from a Beta-binomial (or Binomial) at a given mean rate
+#'
+#' For each element, draws `Binomial(size, p)` where `p = mean_rate` when `s` is
+#' `NULL`/`Inf`, or `p ~ Beta(mean_rate * s, (1 - mean_rate) * s)` when `s` is
+#' finite (overdispersion, precision `s = alpha + beta`). Boundary means (0 or 1)
+#' carry no dispersion and use `p = mean_rate` directly.
+#'
+#' @param mean_rate Numeric vector of target mean methylation rates.
+#' @param size Numeric vector of coverages (recycled/aligned to `mean_rate`).
+#' @param s Optional Beta precision; `NULL`/`Inf` gives a plain Binomial.
+#' @return Integer vector of methylated counts.
+#' @keywords internal
+.betabinom_counts <- function(mean_rate, size, s = NULL) {
+  mean_rate <- pmin(1, pmax(0, mean_rate))
+  p <- mean_rate
+  if (!is.null(s) && is.finite(s)) {
+    mid <- mean_rate > 0 & mean_rate < 1
+    p[mid] <- rbeta(sum(mid), mean_rate[mid] * s, (1 - mean_rate[mid]) * s)
+  }
+  rbinom(length(p), size = pmax(0L, as.integer(round(size))), prob = p)
+}
+
+
+#' Pooled per-site true methylation rate across replicates
+#'
+#' Coverage-weighted: `p = sum(mc) / sum(cov)` over the replicate list. Used as
+#' the ground-truth rate for parametric pseudo-group construction.
+#'
+#' @param replicates List of aligned replicate data.tables (need `mc`, `cov`).
+#' @return Numeric vector of pooled rates (0 where total coverage is 0).
+#' @keywords internal
+.pooled_rate <- function(replicates) {
+  tot_mc  <- Reduce(`+`, lapply(replicates, function(dt) as.numeric(dt$mc)))
+  tot_cov <- Reduce(`+`, lapply(replicates, function(dt) as.numeric(dt$cov)))
+  ifelse(tot_cov > 0, tot_mc / tot_cov, 0)
+}
+
+
+#' Draw one parametric replicate from a per-site true rate
+#'
+#' Reuses the template's real coordinates and coverage, but regenerates `mc`
+#' from scratch as `BetaBinom(cov, p * efficiency, dispersion_s)`. Seeded
+#' independently so replicates and groups share no realized noise.
+#'
+#' @param template Source data.table supplying coordinates and `cov`.
+#' @param p Per-site true rate vector (e.g. from [.pooled_rate()]).
+#' @param efficiency Scalar enzyme efficiency in (0, 1].
+#' @param seed_i Integer seed for this replicate.
+#' @param dispersion_s Optional Beta precision (`NULL`/`Inf` = binomial).
+#' @return data.table copy of `template` with regenerated `mc` and `rate`.
+#' @keywords internal
+.draw_parametric_rep <- function(template, p, efficiency, seed_i,
+                                 dispersion_s = NULL) {
+  set.seed(seed_i)
+  out <- copy(template)
+  mc_new <- .betabinom_counts(p * efficiency, out$cov, dispersion_s)
+  set(out, j = "mc", value = mc_new)
+  set(out, j = "rate", value = ifelse(out$cov > 0, mc_new / out$cov, 0))
+  out
+}
+
+
 #' Simulate enzyme efficiency distortion on a single sample
 #'
-#' For each site, resample methylated counts from a Binomial distribution:
-#'   new_mc ~ Binomial(original_mc, efficiency)
-#' Coverage stays constant (efficiency affects methylation labeling, not
-#' sequencing depth).
+#' For each site, resample methylated counts to reflect a simulated enzyme
+#' efficiency. Two noise models are supported:
+#' \describe{
+#'   \item{Binomial (default)}{`new_mc ~ Binomial(original_mc, efficiency)`.
+#'     This is the minimum-variance model and reproduces the original behavior
+#'     exactly. Note `Binomial(mc, eff)` has the same marginal as
+#'     `Binomial(cov, rate * eff)`, the form the beta-binomial path generalizes.}
+#'   \item{Beta-binomial (`dispersion_s` finite)}{Draws a latent per-site rate
+#'     `p ~ Beta(mu * s, (1 - mu) * s)` with `mu = rate * efficiency` and
+#'     `s = dispersion_s`, then `new_mc ~ Binomial(cov, p)`. This injects
+#'     overdispersion calibrated to real replicate variability (smaller `s` =
+#'     more dispersion; `s = Inf` reduces to the Binomial path).}
+#' }
+#' Coverage stays constant in both cases (efficiency affects methylation
+#' labeling, not sequencing depth).
 #'
 #' @param dt data.table with columns: chr, pos, strand, site, mc, cov, rate
 #' @param efficiency Numeric scalar in (0, 1]. The simulated enzyme efficiency.
 #'   Values < 1 reduce observed methylation proportional to accessibility.
 #' @param seed Optional integer seed for reproducibility.
+#' @param dispersion_s Optional Beta precision (`alpha + beta`) for beta-binomial
+#'   overdispersion. `NULL` or `Inf` (default) uses the original pure-binomial
+#'   model. Calibrate with `inst/scripts/diagnose_variance.R` (e.g. ~26 for the
+#'   M-series data, ~101 for PrEC).
 #' @return data.table with distorted mc and recalculated rate (cov unchanged).
-simulate_efficiency <- function(dt, efficiency, seed = NULL) {
+simulate_efficiency <- function(dt, efficiency, seed = NULL, dispersion_s = NULL) {
   stopifnot(
     is.data.table(dt),
     all(c("mc", "cov", "rate") %in% names(dt)),
     is.numeric(efficiency), length(efficiency) == 1,
     efficiency > 0, efficiency <= 1
   )
-  
+
   if (!is.null(seed)) set.seed(seed)
-  
+
   out <- copy(dt)
-  
-  # Binomial resampling: each methylated read is retained with prob = efficiency
-  mc_new <- rbinom(nrow(out), 
-                   size = pmax(0L, as.integer(round(out$mc))), 
-                   prob = efficiency)
+  n <- nrow(out)
+
+  if (is.null(dispersion_s) || !is.finite(dispersion_s)) {
+    # Binomial resampling: each methylated read retained with prob = efficiency
+    mc_new <- rbinom(n,
+                     size = pmax(0L, as.integer(round(out$mc))),
+                     prob = efficiency)
+  } else {
+    stopifnot(is.numeric(dispersion_s), length(dispersion_s) == 1,
+              dispersion_s > 0)
+    # Beta-binomial resample at mean rate mu = rate * efficiency, precision s.
+    mc_new <- .betabinom_counts(out$rate * efficiency, out$cov, dispersion_s)
+  }
+
   set(out, j = "mc", value = mc_new)
   set(out, j = "rate", value = ifelse(out$cov > 0, out$mc / out$cov, 0))
-  
+
   return(out)
 }
 
@@ -49,30 +135,35 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL) {
 
 #' Resolve efficiency input to a per-replicate vector
 #'
-#' Handles both explicit vectors (per-replicate values) and min/max ranges
-#' (legacy behavior, uniform sampling).
+#' Handles explicit per-replicate vectors and min/max ranges (uniform
+#' sampling). An explicit vector whose length does not match `n_reps` is
+#' recycled to `n_reps` (e.g. a length-3 scenario applied to a 4-replicate
+#' group), preserving the values and spread approximately. A length-2 input is
+#' always treated as a range unless `n_reps == 2`.
 #'
-#' @param eff Numeric vector: length n_reps (explicit) or length 2 (range).
+#' @param eff Numeric vector: length n_reps (explicit), length 2 (range), or any
+#'   other length (recycled to n_reps).
 #' @param n_reps Number of replicates.
 #' @param label Group label for messages.
 #' @return Numeric vector of length n_reps.
 #' @keywords internal
 .resolve_efficiencies <- function(eff, n_reps, label) {
   stopifnot(is.numeric(eff), all(eff > 0), all(eff <= 1))
-  
+
   if (length(eff) == n_reps) {
     # Explicit per-replicate values
     return(eff)
   } else if (length(eff) == 2) {
-    # Legacy range: sample uniformly
+    # Range: sample uniformly
     message(sprintf("Group %s: sampling %d efficiencies from [%.2f, %.2f]",
                     label, n_reps, eff[1], eff[2]))
     return(runif(n_reps, min = eff[1], max = eff[2]))
   } else {
-    stop(sprintf(
-      "efficiency_%s must be length %d (per-replicate) or length 2 (min/max range), got %d",
-      label, n_reps, length(eff)
-    ))
+    # Recycle an explicit vector to the actual replicate count.
+    message(sprintf(
+      "Group %s: recycling %d explicit efficiencies to %d replicates",
+      label, length(eff), n_reps))
+    return(rep_len(eff, n_reps))
   }
 }
 
@@ -84,21 +175,33 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL) {
 #' conditions where individual replicates are processed on different days or
 #' batches and have different enzyme efficiencies.
 #'
-#' Two modes are supported:
+#' Three modes are supported:
 #' \describe{
 #'   \item{mode = "clone"}{(Default) All replicates are used for BOTH groups.
 #'     Each replicate is copied and distorted independently for group A and B,
-#'     yielding a balanced N vs N design.}
+#'     yielding a balanced N vs N design. NOTE: because both groups derive from
+#'     the same realized replicates, the shared biological signal cancels in the
+#'     between-group contrast, making the null artificially tight. Prefer
+#'     "parametric" for a correctly-calibrated null.}
 #'   \item{mode = "split"}{Replicates are split in half: first half goes to
 #'     group A, second half to group B. Requires ≥4 replicates for balanced design.}
+#'   \item{mode = "parametric"}{Each replicate is drawn INDEPENDENTLY (per group)
+#'     from a per-site pooled true rate `p = sum(mc)/sum(cov)`, reusing the real
+#'     per-site coverage. The two groups share no realized noise, so between-group
+#'     variance is generated rather than cancelled, and a single `dispersion_s`
+#'     calibrates both the within-group spread and the between-group contrast.
+#'     N vs N design (N = number of source replicates).}
 #' }
 #'
 #' @param replicates Named list of data.tables (≥2 replicates).
 #' @param efficiency_A Numeric vector: per-replicate efficiencies for group A.
 #'   Can be length n_reps (explicit per-replicate) or length 2 (min/max range).
 #' @param efficiency_B Same as efficiency_A but for group B.
-#' @param mode Character: "clone" (default) or "split".
+#' @param mode Character: "clone" (default), "split", or "parametric".
 #' @param seed Base seed for reproducibility.
+#' @param dispersion_s Optional Beta precision for beta-binomial overdispersion,
+#'   passed to [simulate_efficiency()]. `NULL`/`Inf` (default) = pure binomial.
+#'   In "parametric" mode this is the primary noise knob (e.g. ~26 for M-series).
 #' @return List with elements:
 #'   \item{PseudoA}{Named list of distorted data.tables}
 #'   \item{PseudoB}{Named list of distorted data.tables}
@@ -106,8 +209,9 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL) {
 create_pseudo_groups <- function(replicates,
                                  efficiency_A = c(0.95, 0.70, 0.85),
                                  efficiency_B = c(0.90, 0.65, 0.80),
-                                 mode = c("clone", "split"),
-                                 seed = 42) {
+                                 mode = c("clone", "split", "parametric"),
+                                 seed = 42,
+                                 dispersion_s = NULL) {
   mode <- match.arg(mode)
   stopifnot(is.list(replicates), length(replicates) >= 2)
   
@@ -135,15 +239,16 @@ create_pseudo_groups <- function(replicates,
                     abs(mean(eff_vals_A) - mean(eff_vals_B))))
     
     pseudo_A <- mapply(function(dt, eff, i) {
-      simulate_efficiency(dt, eff, seed = seed + i)
+      simulate_efficiency(dt, eff, seed = seed + i, dispersion_s = dispersion_s)
     }, replicates, eff_vals_A, seq_along(replicates), SIMPLIFY = FALSE)
     names(pseudo_A) <- paste0("PseudoA_", rep_names)
-    
+
     pseudo_B <- mapply(function(dt, eff, i) {
-      simulate_efficiency(dt, eff, seed = seed + 1000 + i)
+      simulate_efficiency(dt, eff, seed = seed + 1000 + i,
+                          dispersion_s = dispersion_s)
     }, replicates, eff_vals_B, seq_along(replicates), SIMPLIFY = FALSE)
     names(pseudo_B) <- paste0("PseudoB_", rep_names)
-    
+
     params <- list(
       mode = "clone",
       n_source_reps = n_reps,
@@ -154,10 +259,11 @@ create_pseudo_groups <- function(replicates,
       mean_eff_B = mean(eff_vals_B),
       sd_eff_A = sd(eff_vals_A),
       sd_eff_B = sd(eff_vals_B),
+      dispersion_s = dispersion_s,
       seed = seed
     )
     
-  } else {
+  } else if (mode == "split") {
     # Split mode: reps divided between groups
     n_A <- ceiling(n_reps / 2)
     n_B <- n_reps - n_A
@@ -182,12 +288,13 @@ create_pseudo_groups <- function(replicates,
                     paste(round(eff_vals_B, 3), collapse = ", ")))
     
     pseudo_A <- mapply(function(dt, eff, i) {
-      simulate_efficiency(dt, eff, seed = seed + i)
+      simulate_efficiency(dt, eff, seed = seed + i, dispersion_s = dispersion_s)
     }, replicates[idx_A], eff_vals_A, seq_along(idx_A), SIMPLIFY = FALSE)
     names(pseudo_A) <- paste0("PseudoA_", rep_names[idx_A])
-    
+
     pseudo_B <- mapply(function(dt, eff, i) {
-      simulate_efficiency(dt, eff, seed = seed + 1000 + i)
+      simulate_efficiency(dt, eff, seed = seed + 1000 + i,
+                          dispersion_s = dispersion_s)
     }, replicates[idx_B], eff_vals_B, seq_along(idx_B), SIMPLIFY = FALSE)
     names(pseudo_B) <- paste0("PseudoB_", rep_names[idx_B])
     
@@ -199,8 +306,55 @@ create_pseudo_groups <- function(replicates,
       efficiency_B = eff_vals_B,
       seed = seed
     )
+
+  } else {
+    # Parametric mode: draw each replicate INDEPENDENTLY (per group) from a
+    # per-site pooled true rate. The two groups share no realized noise, so the
+    # between-group contrast is generated rather than cancelled (unlike clone),
+    # and one dispersion_s calibrates both within- and between-group variance.
+    eff_vals_A <- .resolve_efficiencies(efficiency_A, n_reps, "A")
+    eff_vals_B <- .resolve_efficiencies(efficiency_B, n_reps, "B")
+
+    pooled_p <- .pooled_rate(replicates)
+
+    message(sprintf("Parametric mode: %d reps → %d vs %d design (pooled p, s=%s)",
+                    n_reps, n_reps, n_reps,
+                    if (is.null(dispersion_s)) "Inf" else
+                      format(dispersion_s)))
+    message(sprintf("PseudoA efficiencies: %s",
+                    paste(round(eff_vals_A, 3), collapse = ", ")))
+    message(sprintf("PseudoB efficiencies: %s",
+                    paste(round(eff_vals_B, 3), collapse = ", ")))
+    message(sprintf("Between-group mean efficiency difference: %.3f",
+                    abs(mean(eff_vals_A) - mean(eff_vals_B))))
+
+    # Both groups drawn independently from the SAME pooled true rate (null
+    # biology); independent seeds mean no shared noise to cancel.
+    pseudo_A <- mapply(function(dt, eff, i) {
+      .draw_parametric_rep(dt, pooled_p, eff, seed + i, dispersion_s)
+    }, replicates, eff_vals_A, seq_along(replicates), SIMPLIFY = FALSE)
+    names(pseudo_A) <- paste0("PseudoA_", rep_names)
+
+    pseudo_B <- mapply(function(dt, eff, i) {
+      .draw_parametric_rep(dt, pooled_p, eff, seed + 1000 + i, dispersion_s)
+    }, replicates, eff_vals_B, seq_along(replicates), SIMPLIFY = FALSE)
+    names(pseudo_B) <- paste0("PseudoB_", rep_names)
+
+    params <- list(
+      mode = "parametric",
+      n_source_reps = n_reps,
+      n_reps_A = n_reps, n_reps_B = n_reps,
+      efficiency_A = eff_vals_A,
+      efficiency_B = eff_vals_B,
+      mean_eff_A = mean(eff_vals_A),
+      mean_eff_B = mean(eff_vals_B),
+      sd_eff_A = sd(eff_vals_A),
+      sd_eff_B = sd(eff_vals_B),
+      dispersion_s = dispersion_s,
+      seed = seed
+    )
   }
-  
+
   return(list(PseudoA = pseudo_A, PseudoB = pseudo_B, params = params))
 }
 
@@ -533,25 +687,125 @@ inject_spikein_dmrs <- function(dt,
 }
 
 
+#' Inject spike-in DMRs into the true rate (parametric mode)
+#'
+#' Unlike [inject_spikein_dmrs()], which resamples realized counts, this shifts
+#' the per-site TRUE rate `p` within spike-in regions, returning a modified rate
+#' vector for group B. Replicates are then drawn from this rate by
+#' [.draw_parametric_rep()], so the spike-in is a genuine biological difference
+#' that precedes efficiency and sampling. Direction is rate-aware ("auto"),
+#' matching [inject_spikein_dmrs()].
+#'
+#' @param ref_dt Reference data.table aligned to `p` (needs `chr`, `pos`).
+#' @param p Per-site true rate vector (e.g. from [.pooled_rate()]).
+#' @param regions Spike-in regions (region_id, chr, start, end).
+#' @param effect_size Numeric scalar: amount to shift rates.
+#' @param direction "auto" (default), "increase", "decrease", or "both".
+#' @param low_rate_threshold Below this mean rate, regions get "increase".
+#' @param high_rate_threshold Above this mean rate, regions get "decrease".
+#' @param seed Optional seed (only affects direction = "both").
+#' @return List with `p` (modified group-B rate vector) and `truth` (per-site
+#'   injected effects).
+#' @noRd
+inject_spikein_parametric <- function(ref_dt, p, regions,
+                                      effect_size = 0.15, direction = "auto",
+                                      low_rate_threshold = 0.4,
+                                      high_rate_threshold = 0.6,
+                                      seed = NULL) {
+  stopifnot(
+    is.data.table(ref_dt), is.data.table(regions),
+    length(p) == nrow(ref_dt),
+    direction %in% c("auto", "increase", "decrease", "both")
+  )
+  if (!is.null(seed)) set.seed(seed)
+
+  chr <- ref_dt$chr
+  pos <- ref_dt$pos
+  p_B <- p
+  truth_list <- list()
+
+  for (i in seq_len(nrow(regions))) {
+    r <- regions[i]
+    site_idx <- which(chr == r$chr & pos >= r$start & pos <= r$end)
+    if (length(site_idx) == 0) next
+
+    old_rates <- p[site_idx]
+    mean_rate <- mean(old_rates)
+
+    dir_sign <- if (direction == "auto") {
+      if (mean_rate < low_rate_threshold) {
+        1L
+      } else if (mean_rate > high_rate_threshold) {
+        -1L
+      } else {
+        if ((1 - mean_rate) >= mean_rate) 1L else -1L
+      }
+    } else if (direction == "increase") {
+      1L
+    } else if (direction == "decrease") {
+      -1L
+    } else {
+      sample(c(1L, -1L), 1L)
+    }
+
+    new_rates <- pmin(1, pmax(0, old_rates + dir_sign * effect_size))
+    p_B[site_idx] <- new_rates
+
+    truth_list[[i]] <- data.table(
+      region_id     = r$region_id,
+      chr           = r$chr,
+      pos           = pos[site_idx],
+      original_rate = old_rates,
+      injected_rate = new_rates,
+      actual_effect = new_rates - old_rates,
+      direction     = ifelse(dir_sign == 1L, "increase", "decrease"),
+      mean_baseline = mean_rate
+    )
+  }
+
+  truth <- rbindlist(truth_list)
+  message(sprintf(
+    "Parametric spike-in: %d regions, %d sites, effect=%.2f (median achievable=%.3f)",
+    length(truth_list), nrow(truth), effect_size,
+    if (nrow(truth)) median(abs(truth$actual_effect)) else 0
+  ))
+
+  list(p = p_B, truth = truth)
+}
+
+
 
 # Scenario definitions ----------------------------------------------------
 
 #' Get predefined efficiency scenarios
 #'
-#' Scenarios model WITHIN-GROUP replicate-to-replicate efficiency variation,
-#' reflecting real experimental conditions where replicates are processed on
-#' different days with varying enzyme activity. Both groups span similar
-#' efficiency ranges; there is no systematic between-group bias. The artifact
-#' is per-replicate, not per-group.
+#' Two families of scenarios:
+#' \describe{
+#'   \item{Within-group (specificity controls)}{`mild`, `moderate`, `severe`.
+#'     Explicit per-replicate efficiencies with matched group MEANS — only the
+#'     within-group spread varies. There is no systematic between-group bias, so
+#'     a well-behaved method should call few/no DMRs. These test specificity, not
+#'     correction.}
+#'   \item{Between-group bias (the artifact to correct)}{`aligned_*` and
+#'     `imbalanced_*`. Specified as `[min, max]` efficiency RANGES per group
+#'     (sampled per replicate, so they adapt to any replicate count).
+#'     \itemize{
+#'       \item `aligned_*`: NON-overlapping ranges — every group-A replicate is
+#'         more efficient than every group-B replicate. A clean, label-aligned
+#'         batch effect; the idealized case batch correction is built for.
+#'       \item `imbalanced_*`: OVERLAPPING but shifted ranges — group B skews
+#'         lower on average, but individual replicates overlap. A realistic
+#'         per-sample artifact that is NOT cleanly separable by group label, and
+#'         is harder for label-based correction (matches the package's premise).
+#'     }
+#'   }
+#' }
+#' Between-group bias scenarios are what make un-normalized (raw) analysis
+#' produce false positives (null) and biased effects (spike-in).
 #'
-#' Each scenario specifies explicit per-replicate efficiencies for 3 replicates
-#' per group. Group means are approximately matched to avoid confounding
-#' within-group variation with between-group differences.
-#'
-#' @return Named list of scenarios, each with:
-#'   \item{label}{Human-readable description}
-#'   \item{efficiency_A}{Numeric vector of 3 per-replicate efficiencies for group A}
-#'   \item{efficiency_B}{Numeric vector of 3 per-replicate efficiencies for group B}
+#' @return Named list of scenarios, each with `label`, `efficiency_A`,
+#'   `efficiency_B` (length-3 explicit vectors for within-group scenarios;
+#'   length-2 `[min, max]` ranges for between-group bias scenarios).
 get_efficiency_scenarios <- function() {
   list(
     mild = list(
@@ -574,6 +828,30 @@ get_efficiency_scenarios <- function() {
       efficiency_A = c(0.55, 0.95, 0.75),
       # Group B: mean ~ 0.73, range 0.50-0.90
       efficiency_B = c(0.90, 0.50, 0.80)
+    ),
+
+    # --- Between-group bias: aligned (clean batch, non-overlapping ranges) ---
+    aligned_moderate = list(
+      label = "Aligned between-group bias (Δmean ~ 0.15, non-overlapping)",
+      efficiency_A = c(0.83, 0.93),   # mean ~ 0.88
+      efficiency_B = c(0.68, 0.78)    # mean ~ 0.73
+    ),
+    aligned_strong = list(
+      label = "Aligned between-group bias (Δmean ~ 0.30, non-overlapping)",
+      efficiency_A = c(0.85, 0.95),   # mean ~ 0.90
+      efficiency_B = c(0.55, 0.65)    # mean ~ 0.60
+    ),
+
+    # --- Between-group bias: imbalanced (per-sample, overlapping ranges) ------
+    imbalanced_moderate = list(
+      label = "Imbalanced per-sample bias (Δmean ~ 0.13, ranges overlap)",
+      efficiency_A = c(0.75, 0.93),   # mean ~ 0.84
+      efficiency_B = c(0.62, 0.80)    # mean ~ 0.71
+    ),
+    imbalanced_strong = list(
+      label = "Imbalanced per-sample bias (Δmean ~ 0.22, ranges overlap)",
+      efficiency_A = c(0.72, 0.95),   # mean ~ 0.835
+      efficiency_B = c(0.50, 0.73)    # mean ~ 0.615
     )
   )
 }

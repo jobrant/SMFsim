@@ -7,20 +7,32 @@
 get_efficiency_scenarios()
 }
 \value{
-Named list of scenarios, each with:
-\item{label}{Human-readable description}
-\item{efficiency_A}{Numeric vector of 3 per-replicate efficiencies for group A}
-\item{efficiency_B}{Numeric vector of 3 per-replicate efficiencies for group B}
+Named list of scenarios, each with \code{label}, \code{efficiency_A},
+\code{efficiency_B} (length-3 explicit vectors for within-group scenarios;
+length-2 \verb{[min, max]} ranges for between-group bias scenarios).
 }
 \description{
-Scenarios model WITHIN-GROUP replicate-to-replicate efficiency variation,
-reflecting real experimental conditions where replicates are processed on
-different days with varying enzyme activity. Both groups span similar
-efficiency ranges; there is no systematic between-group bias. The artifact
-is per-replicate, not per-group.
+Two families of scenarios:
+\describe{
+\item{Within-group (specificity controls)}{\code{mild}, \code{moderate}, \code{severe}.
+Explicit per-replicate efficiencies with matched group MEANS — only the
+within-group spread varies. There is no systematic between-group bias, so
+a well-behaved method should call few/no DMRs. These test specificity, not
+correction.}
+\item{Between-group bias (the artifact to correct)}{\verb{aligned_*} and
+\verb{imbalanced_*}. Specified as \verb{[min, max]} efficiency RANGES per group
+(sampled per replicate, so they adapt to any replicate count).
+\itemize{
+\item \verb{aligned_*}: NON-overlapping ranges — every group-A replicate is
+more efficient than every group-B replicate. A clean, label-aligned
+batch effect; the idealized case batch correction is built for.
+\item \verb{imbalanced_*}: OVERLAPPING but shifted ranges — group B skews
+lower on average, but individual replicates overlap. A realistic
+per-sample artifact that is NOT cleanly separable by group label, and
+is harder for label-based correction (matches the package's premise).
 }
-\details{
-Each scenario specifies explicit per-replicate efficiencies for 3 replicates
-per group. Group means are approximately matched to avoid confounding
-within-group variation with between-group differences.
+}
+}
+Between-group bias scenarios are what make un-normalized (raw) analysis
+produce false positives (null) and biased effects (spike-in).
 }

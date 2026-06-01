@@ -45,9 +45,12 @@ parse_args <- function() {
     metilene_max_dist = 300,
     metilene_min_cpg  = 10,
     metilene_min_diff = 0.1,
-    within_alpha = 0.3, 
-    between_alpha = 0.5, 
-    min_coverage = 5
+    within_alpha = 0.3,
+    between_alpha = 0.5,
+    min_coverage = 5,
+    dispersion_s = Inf,    # Beta precision for overdispersion; Inf = pure binomial
+    sim_mode = "clone",    # pseudo-group construction: "clone" or "parametric"
+    rate_between_groups = FALSE  # SMFnorm: correct between-group rate differences
   )
 
   # Override from command line if provided
@@ -59,7 +62,7 @@ parse_args <- function() {
     } else if (key %in% c("seed", "n_spikein_regions", "region_width_bp",
                            "metilene_min_cpg", "metilene_max_dist")) {
       config[[key]] <- as.integer(args[i + 1])
-    } else if (key %in% c("metilene_min_diff")) {
+    } else if (key %in% c("metilene_min_diff", "dispersion_s")) {
       config[[key]] <- as.numeric(args[i + 1])
     } else if (key %in% c("effect_sizes")) {
       config[[key]] <- as.numeric(strsplit(args[i + 1], ",")[[1]])
@@ -77,8 +80,15 @@ parse_args <- function() {
 
 #' Load WT replicates and prepare for simulation
 #'
+#' Non-standard contigs (e.g. `*_random`, `Un_*`) break the numeric site id used
+#' by `find_shared_sites()` and can leave replicates with mismatched row counts.
+#' By default this filters to standard chromosomes before shared-site filtering
+#' (override the pattern with `config$chr_pattern`, or disable with
+#' `config$standard_chr_only = FALSE`), then verifies all replicates are aligned.
+#'
 #' @param config Configuration list from parse_args().
-#' @return Named list of WT replicate data.tables (post shared-site filtering).
+#' @return Named list of WT replicate data.tables (aligned, post shared-site
+#'   filtering).
 #' @export
 prepare_wt_replicates <- function(config) {
   message("\n", strrep("=", 60))
@@ -94,8 +104,26 @@ prepare_wt_replicates <- function(config) {
 
   message(sprintf("Loaded %d WT samples", length(all_samples)))
 
+  # Filter to standard chromosomes (autosomes + X/Y/M, with/without "chr")
+  if (config$standard_chr_only %||% TRUE) {
+    pattern <- config$chr_pattern %||% "^(chr)?([0-9]{1,2}|X|Y|M|MT)$"
+    n_before <- nrow(all_samples[[1]])
+    all_samples <- lapply(all_samples, function(dt) dt[grepl(pattern, chr)])
+    message(sprintf("Standard-chromosome filter: %d -> %d rows in sample 1",
+                    n_before, nrow(all_samples[[1]])))
+  }
+
   # Find shared sites across WT replicates
   all_samples <- find_shared_sites(all_samples, filter = TRUE)
+
+  # Verify alignment: downstream code (.pooled_rate, run_downsampled) assumes
+  # all replicates share the same sites in the same row order.
+  lens <- vapply(all_samples, nrow, integer(1))
+  if (length(unique(lens)) != 1L) {
+    stop(sprintf(
+      "Replicates are not aligned after find_shared_sites (rows: %s). Check for non-standard contigs or duplicate sites.",
+      paste(lens, collapse = ", ")))
+  }
 
   message(sprintf("After shared-site filtering: %d sites per sample",
                   nrow(all_samples[[1]])))
@@ -134,18 +162,20 @@ run_null_simulation <- function(wt_reps, config) {
       replicates = wt_reps,
       efficiency_A = sc$efficiency_A,
       efficiency_B = sc$efficiency_B,
-      mode = "clone",
-      seed = config$seed
+      mode = config$sim_mode %||% "clone",
+      seed = config$seed,
+      dispersion_s = config$dispersion_s
     )
 
     # Run all normalization methods
     method_results <- run_all_methods(
       pseudo_groups = pseudo,
-      methods = config$methods, 
+      methods = config$methods,
       SMFnorm_params = list(
         within_alpha = config$within_alpha,
         between_alpha = config$between_alpha,
-        min_coverage = config$min_coverage %||% 5
+        min_coverage = config$min_coverage %||% 5,
+        rate_between_groups = config$rate_between_groups %||% FALSE
       )
     )
 
@@ -207,7 +237,10 @@ run_spikein_simulation <- function(wt_reps, config) {
   
   scenarios <- get_efficiency_scenarios()
   scenarios <- scenarios[config$scenarios]
-  
+
+  sim_mode <- config$sim_mode %||% "clone"
+  message(sprintf("Spike-in construction mode: %s", sim_mode))
+
   # Select spike-in regions once (same regions for all scenarios)
   ref_dt <- wt_reps[[1]]
   spikein_regions <- select_dense_spikein_regions(
@@ -240,33 +273,65 @@ run_spikein_simulation <- function(wt_reps, config) {
       n_reps <- length(wt_reps)
       rep_names <- names(wt_reps)
       
-      # Resolve per-replicate efficiencies
+      # Resolve per-replicate efficiencies. Seed first so range-based scenarios
+      # (which sample via runif) give the same efficiencies across effect sizes
+      # and are reproducible across runs.
+      set.seed(config$seed)
       eff_A <- .resolve_efficiencies(sc$efficiency_A, n_reps, "A")
       eff_B <- .resolve_efficiencies(sc$efficiency_B, n_reps, "B")
       
-      # Step 1: Inject spike-in DMRs into group B copies BEFORE efficiency
-      reps_B_injected <- lapply(seq_len(n_reps), function(i) {
-        injection <- inject_spikein_dmrs(
-          dt = wt_reps[[i]],
+      if (sim_mode == "parametric") {
+        # Parametric: inject the effect into the pooled TRUE rate for group B,
+        # then draw both groups independently from their respective rates.
+        pooled_p <- .pooled_rate(wt_reps)
+        inj <- inject_spikein_parametric(
+          ref_dt = wt_reps[[1]],
+          p = pooled_p,
           regions = spikein_regions,
           effect_size = effect,
           direction = "auto",
-          seed = config$seed + 2000 + i
+          seed = config$seed + 2000
         )
-        injection$data
-      })
-      names(reps_B_injected) <- rep_names
-      
-      # Step 2: Apply per-replicate efficiency distortion
-      distorted_A <- mapply(function(dt, eff, i) {
-        simulate_efficiency(dt, eff, seed = config$seed + 4000 + i)
-      }, wt_reps, eff_A, seq_along(wt_reps), SIMPLIFY = FALSE)
-      names(distorted_A) <- paste0("PseudoA_", rep_names)
-      
-      distorted_B <- mapply(function(dt, eff, i) {
-        simulate_efficiency(dt, eff, seed = config$seed + 5000 + i)
-      }, reps_B_injected, eff_B, seq_along(reps_B_injected), SIMPLIFY = FALSE)
-      names(distorted_B) <- paste0("PseudoB_", rep_names)
+
+        distorted_A <- mapply(function(dt, eff, i) {
+          .draw_parametric_rep(dt, pooled_p, eff,
+                               config$seed + 4000 + i, config$dispersion_s)
+        }, wt_reps, eff_A, seq_along(wt_reps), SIMPLIFY = FALSE)
+        names(distorted_A) <- paste0("PseudoA_", rep_names)
+
+        distorted_B <- mapply(function(dt, eff, i) {
+          .draw_parametric_rep(dt, inj$p, eff,
+                               config$seed + 5000 + i, config$dispersion_s)
+        }, wt_reps, eff_B, seq_along(wt_reps), SIMPLIFY = FALSE)
+        names(distorted_B) <- paste0("PseudoB_", rep_names)
+
+      } else {
+        # Clone: inject spike-ins into realized group-B counts BEFORE efficiency,
+        # then thin/resample both groups from the same source replicates.
+        reps_B_injected <- lapply(seq_len(n_reps), function(i) {
+          injection <- inject_spikein_dmrs(
+            dt = wt_reps[[i]],
+            regions = spikein_regions,
+            effect_size = effect,
+            direction = "auto",
+            seed = config$seed + 2000 + i
+          )
+          injection$data
+        })
+        names(reps_B_injected) <- rep_names
+
+        distorted_A <- mapply(function(dt, eff, i) {
+          simulate_efficiency(dt, eff, seed = config$seed + 4000 + i,
+                              dispersion_s = config$dispersion_s)
+        }, wt_reps, eff_A, seq_along(wt_reps), SIMPLIFY = FALSE)
+        names(distorted_A) <- paste0("PseudoA_", rep_names)
+
+        distorted_B <- mapply(function(dt, eff, i) {
+          simulate_efficiency(dt, eff, seed = config$seed + 5000 + i,
+                              dispersion_s = config$dispersion_s)
+        }, reps_B_injected, eff_B, seq_along(reps_B_injected), SIMPLIFY = FALSE)
+        names(distorted_B) <- paste0("PseudoB_", rep_names)
+      }
       
       pseudo <- list(
         PseudoA = distorted_A,
@@ -275,6 +340,8 @@ run_spikein_simulation <- function(wt_reps, config) {
           efficiency_A = eff_A,
           efficiency_B = eff_B,
           effect_size = effect,
+          dispersion_s = config$dispersion_s,
+          sim_mode = sim_mode,
           n_spikein_regions = nrow(spikein_regions)
         )
       )
@@ -286,7 +353,8 @@ run_spikein_simulation <- function(wt_reps, config) {
         SMFnorm_params = list(
           within_alpha = config$within_alpha,
           between_alpha = config$between_alpha,
-          min_coverage = config$min_coverage
+          min_coverage = config$min_coverage,
+          rate_between_groups = config$rate_between_groups %||% FALSE
         )
       )
       

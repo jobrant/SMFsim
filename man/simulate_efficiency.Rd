@@ -4,7 +4,7 @@
 \alias{simulate_efficiency}
 \title{Simulate enzyme efficiency distortion on a single sample}
 \usage{
-simulate_efficiency(dt, efficiency, seed = NULL)
+simulate_efficiency(dt, efficiency, seed = NULL, dispersion_s = NULL)
 }
 \arguments{
 \item{dt}{data.table with columns: chr, pos, strand, site, mc, cov, rate}
@@ -13,13 +13,29 @@ simulate_efficiency(dt, efficiency, seed = NULL)
 Values < 1 reduce observed methylation proportional to accessibility.}
 
 \item{seed}{Optional integer seed for reproducibility.}
+
+\item{dispersion_s}{Optional Beta precision (\code{alpha + beta}) for beta-binomial
+overdispersion. \code{NULL} or \code{Inf} (default) uses the original pure-binomial
+model. Calibrate with \code{inst/scripts/diagnose_variance.R} (e.g. ~26 for the
+M-series data, ~101 for PrEC).}
 }
 \value{
 data.table with distorted mc and recalculated rate (cov unchanged).
 }
 \description{
-For each site, resample methylated counts from a Binomial distribution:
-new_mc ~ Binomial(original_mc, efficiency)
-Coverage stays constant (efficiency affects methylation labeling, not
-sequencing depth).
+For each site, resample methylated counts to reflect a simulated enzyme
+efficiency. Two noise models are supported:
+\describe{
+\item{Binomial (default)}{\code{new_mc ~ Binomial(original_mc, efficiency)}.
+This is the minimum-variance model and reproduces the original behavior
+exactly. Note \code{Binomial(mc, eff)} has the same marginal as
+\code{Binomial(cov, rate * eff)}, the form the beta-binomial path generalizes.}
+\item{Beta-binomial (\code{dispersion_s} finite)}{Draws a latent per-site rate
+\code{p ~ Beta(mu * s, (1 - mu) * s)} with \code{mu = rate * efficiency} and
+\code{s = dispersion_s}, then \code{new_mc ~ Binomial(cov, p)}. This injects
+overdispersion calibrated to real replicate variability (smaller \code{s} =
+more dispersion; \code{s = Inf} reduces to the Binomial path).}
+}
+Coverage stays constant in both cases (efficiency affects methylation
+labeling, not sequencing depth).
 }

@@ -1,0 +1,26 @@
+# R / RStudio
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Package build artifacts
+*.tar.gz
+*.Rcheck/
+..Rcheck/
+
+# Editor / OS
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Simulation input data and outputs (not tracked; see README "File Structure")
+data/
+results/
+
+# Scratch / interactive testing
+inst/scripts/testing.R
+
+# Local agent instructions (not shared)
+CLAUDE.md
