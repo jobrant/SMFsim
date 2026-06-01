@@ -7,7 +7,8 @@
 .resolve_efficiencies(eff, n_reps, label)
 }
 \arguments{
-\item{eff}{Numeric vector: length n_reps (explicit) or length 2 (range).}
+\item{eff}{Numeric vector: length n_reps (explicit), length 2 (range), or any
+other length (recycled to n_reps).}
 
 \item{n_reps}{Number of replicates.}
 
@@ -17,7 +18,10 @@
 Numeric vector of length n_reps.
 }
 \description{
-Handles both explicit vectors (per-replicate values) and min/max ranges
-(legacy behavior, uniform sampling).
+Handles explicit per-replicate vectors and min/max ranges (uniform
+sampling). An explicit vector whose length does not match \code{n_reps} is
+recycled to \code{n_reps} (e.g. a length-3 scenario applied to a 4-replicate
+group), preserving the values and spread approximately. A length-2 input is
+always treated as a range unless \code{n_reps == 2}.
 }
 \keyword{internal}

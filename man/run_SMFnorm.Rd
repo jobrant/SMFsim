@@ -8,7 +8,8 @@ run_SMFnorm(
   pseudo_groups,
   within_alpha = 0.3,
   between_alpha = 0.5,
-  min_coverage = 5
+  min_coverage = 5,
+  rate_between_groups = FALSE
 )
 }
 \arguments{
@@ -19,6 +20,11 @@ run_SMFnorm(
 \item{between_alpha}{Alpha for between-group rate normalization.}
 
 \item{min_coverage}{Minimum coverage threshold.}
+
+\item{rate_between_groups}{Logical: correct between-group rate differences.
+Default FALSE (within-group only). Set TRUE to correct a systematic
+between-group efficiency artifact (e.g. the \verb{aligned_*} bias scenarios);
+leave FALSE for the matched-mean within-group scenarios.}
 }
 \value{
 Named list with method = "SMFnorm" and normalized split data.

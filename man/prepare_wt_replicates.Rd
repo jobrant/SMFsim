@@ -10,8 +10,13 @@ prepare_wt_replicates(config)
 \item{config}{Configuration list from parse_args().}
 }
 \value{
-Named list of WT replicate data.tables (post shared-site filtering).
+Named list of WT replicate data.tables (aligned, post shared-site
+filtering).
 }
 \description{
-Load WT replicates and prepare for simulation
+Non-standard contigs (e.g. \verb{*_random}, \verb{Un_*}) break the numeric site id used
+by \code{find_shared_sites()} and can leave replicates with mismatched row counts.
+By default this filters to standard chromosomes before shared-site filtering
+(override the pattern with \code{config$chr_pattern}, or disable with
+\code{config$standard_chr_only = FALSE}), then verifies all replicates are aligned.
 }

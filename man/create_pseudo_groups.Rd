@@ -8,8 +8,9 @@ create_pseudo_groups(
   replicates,
   efficiency_A = c(0.95, 0.7, 0.85),
   efficiency_B = c(0.9, 0.65, 0.8),
-  mode = c("clone", "split"),
-  seed = 42
+  mode = c("clone", "split", "parametric"),
+  seed = 42,
+  dispersion_s = NULL
 )
 }
 \arguments{
@@ -20,9 +21,13 @@ Can be length n_reps (explicit per-replicate) or length 2 (min/max range).}
 
 \item{efficiency_B}{Same as efficiency_A but for group B.}
 
-\item{mode}{Character: "clone" (default) or "split".}
+\item{mode}{Character: "clone" (default), "split", or "parametric".}
 
 \item{seed}{Base seed for reproducibility.}
+
+\item{dispersion_s}{Optional Beta precision for beta-binomial overdispersion,
+passed to \code{\link[=simulate_efficiency]{simulate_efficiency()}}. \code{NULL}/\code{Inf} (default) = pure binomial.
+In "parametric" mode this is the primary noise knob (e.g. ~26 for M-series).}
 }
 \value{
 List with elements:
@@ -37,12 +42,21 @@ conditions where individual replicates are processed on different days or
 batches and have different enzyme efficiencies.
 }
 \details{
-Two modes are supported:
+Three modes are supported:
 \describe{
 \item{mode = "clone"}{(Default) All replicates are used for BOTH groups.
 Each replicate is copied and distorted independently for group A and B,
-yielding a balanced N vs N design.}
+yielding a balanced N vs N design. NOTE: because both groups derive from
+the same realized replicates, the shared biological signal cancels in the
+between-group contrast, making the null artificially tight. Prefer
+"parametric" for a correctly-calibrated null.}
 \item{mode = "split"}{Replicates are split in half: first half goes to
 group A, second half to group B. Requires ≥4 replicates for balanced design.}
+\item{mode = "parametric"}{Each replicate is drawn INDEPENDENTLY (per group)
+from a per-site pooled true rate \code{p = sum(mc)/sum(cov)}, reusing the real
+per-site coverage. The two groups share no realized noise, so between-group
+variance is generated rather than cancelled, and a single \code{dispersion_s}
+calibrates both the within-group spread and the between-group contrast.
+N vs N design (N = number of source replicates).}
 }
 }

@@ -1,1 +1,7 @@
 ^LICENSE\.md$
+^CLAUDE\.md$
+^\.gitignore$
+^\.vscode$
+^data$
+^results$
+^inst/scripts/testing\.R$

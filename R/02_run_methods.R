@@ -152,12 +152,18 @@ run_downsampled <- function(pseudo_groups) {
 #' @param within_alpha Alpha for within-group rate normalization.
 #' @param between_alpha Alpha for between-group rate normalization.
 #' @param min_coverage Minimum coverage threshold.
+#' @param rate_between_groups Logical: correct between-group rate differences.
+#'   Default FALSE (within-group only). Set TRUE to correct a systematic
+#'   between-group efficiency artifact (e.g. the `aligned_*` bias scenarios);
+#'   leave FALSE for the matched-mean within-group scenarios.
 #' @return Named list with method = "SMFnorm" and normalized split data.
 run_SMFnorm <- function(pseudo_groups,
                         within_alpha = 0.3,
                         between_alpha = 0.5,
-                        min_coverage = 5) {
-  message("Method: SMFnorm")
+                        min_coverage = 5,
+                        rate_between_groups = FALSE) {
+  message(sprintf("Method: SMFnorm (rate_between_groups = %s)",
+                  rate_between_groups))
 
   # Format as SMFnorm expects
   formatted <- format_for_smfnorm(pseudo_groups)
@@ -172,7 +178,7 @@ run_SMFnorm <- function(pseudo_groups,
     normalize_rates = TRUE,
     coverage_between_groups = FALSE,
     rate_within_groups = TRUE,
-    rate_between_groups = FALSE,
+    rate_between_groups = rate_between_groups,
     within_alpha = within_alpha,
     between_alpha = between_alpha,
     min_coverage = min_coverage
