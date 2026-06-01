@@ -17,8 +17,8 @@ config <- list(
   scenarios           = c("mild", "moderate", "severe"),
   effect_sizes        = c(0.10, 0.15, 0.20, 0.30),
   n_spikein_regions   = 300,
-  region_width_bp     = 2000, 
-  max_median_distance = 200, 
+  region_width_bp     = 2000,
+  max_median_distance = 200,
   min_sites           = 10,
   wt_group_id         = "PrEC",   # normal prostate epithelial cells (3 reps)
   seed                = 42,
@@ -26,8 +26,8 @@ config <- list(
   metilene_max_dist   = 300,
   metilene_min_cpg    = 10,
   metilene_min_diff   = 0.1,
-  within_alpha        = 0.3, 
-  between_alpha       = 0.5, 
+  within_alpha        = 0.3,
+  between_alpha       = 0.5,
   min_coverage        = 5
 )
 
