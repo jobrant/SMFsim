@@ -50,7 +50,8 @@ parse_args <- function() {
     min_coverage = 5,
     dispersion_s = Inf,    # Beta precision for overdispersion; Inf = pure binomial
     sim_mode = "clone",    # pseudo-group construction: "clone" or "parametric"
-    rate_between_groups = FALSE  # SMFnorm: correct between-group rate differences
+    rate_between_groups = FALSE,  # SMFnorm: correct between-group rate differences
+    alpha = .1  # significance threshold for metilene
   )
 
   # Override from command line if provided
@@ -384,7 +385,7 @@ run_spikein_simulation <- function(wt_reps, config) {
         })
         
         eval_result <- classify_dmrs(
-          called_dmrs = dmrs,
+          called_dmrs = subset(dmrs, q_value < config$alpha), ## use significance threshold?
           truth_regions = spikein_regions
         )
         

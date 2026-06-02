@@ -319,8 +319,9 @@ call_dmrs_metilene <- function(split_data,
 
   out_file <- file.path(out_dir, "metilene_dmrs.bed")
 
+  # use FDR instead for q-value
   cmd <- sprintf(
-    "%s -a PseudoA -b PseudoB -m %d -d %f -M %d %s > %s 2>/dev/null",
+    "%s -a PseudoA -b PseudoB -m %d -d %f -M %d -c 2 %s > %s 2>/dev/null", 
     metilene_path, min_cpg, min_diff, metilene_max_dist, merged_input, out_file
   )
 
