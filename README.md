@@ -107,6 +107,10 @@ install.packages(c("data.table", "ggplot2"))
 BiocManager::install(c("GenomicRanges", "IRanges", "S4Vectors"))
 devtools::install_github("jobrant/SMFnorm")
 
+To compare:
+
+devtools::install_github("JmWangBio/ComBatMet")
+
 # Install SMFsim
 devtools::install_github("jobrant/SMFsim")
 ```

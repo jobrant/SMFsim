@@ -196,59 +196,43 @@ run_SMFnorm <- function(pseudo_groups,
 #' This wrapper prepares a matrix, runs ComBat, and converts back.
 #'
 #' @param pseudo_groups List from create_pseudo_groups().
+#' @import ComBatMet
 #' @return Named list with method = "ComBatMet" and normalized split data.
 run_combatmet <- function(pseudo_groups) {
-  message("Method: ComBatMet (manual mean-only)")
+  message("Method: ComBatMet")
   
   all_samples <- lapply(
     c(pseudo_groups$PseudoA, pseudo_groups$PseudoB),
     data.table::copy
   )
-  names(all_samples) <- c(names(pseudo_groups$PseudoA), names(pseudo_groups$PseudoB))
-  n_A <- length(pseudo_groups$PseudoA)
-  nc <- length(all_samples)
-  
+ 
   # Build rate matrix
   rate_matrix <- do.call(cbind, lapply(all_samples, function(dt) as.numeric(dt$rate)))
   colnames(rate_matrix) <- names(all_samples)
-  nr <- nrow(rate_matrix)
+
+  n_group <- sapply(pseudo_groups, length)[1:2]
+  k_group <- as.factor(rep(names(n_group), n_group))
+  k_batch <- as.factor(sequence(n_Group))
+
+  ComBatNorm <- ComBat_met(
+    vmat = rate_matrix,
+    dtype = "b-value",
+    batch = k_batch,
+    group = k_group,
+    full_mod = FALSE,
+    ncores = 1
+  )
   
-  # Bound rates away from 0 and 1 (in place to preserve matrix)
-  rate_matrix[rate_matrix < 1e-6] <- 1e-6
-  rate_matrix[rate_matrix > (1 - 1e-6)] <- 1 - 1e-6
-  
-  # Logit transform (in place to preserve matrix)
-  logit_rates <- rate_matrix
-  logit_rates[] <- log(rate_matrix / (1 - rate_matrix))
-  
-  message("  logit_rates dim: ", nrow(logit_rates), " x ", ncol(logit_rates))
-  
-  # Mean-only batch correction
-  grand_mean <- rowMeans(logit_rates)
-  batch_A_mean <- rowMeans(logit_rates[, 1:n_A, drop = FALSE])
-  batch_B_mean <- rowMeans(logit_rates[, (n_A+1):nc, drop = FALSE])
-  
-  adjusted <- logit_rates
-  adjusted[, 1:n_A] <- adjusted[, 1:n_A] - batch_A_mean + grand_mean
-  adjusted[, (n_A+1):nc] <- adjusted[, (n_A+1):nc] - batch_B_mean + grand_mean
-  
-  # Inverse logit
-  adjusted_rates <- adjusted
-  adjusted_rates[] <- 1 / (1 + exp(-adjusted))
-  
-  message("  adjusted_rates dim: ", nrow(adjusted_rates), " x ", ncol(adjusted_rates))
-  
-  result_samples <- lapply(seq_len(nc), function(i) {
-    out <- copy(all_samples[[i]])
-    out[, rate := adjusted_rates[, i]]
-    out[, mc := as.integer(round(cov * rate))]
-    return(out)
+  all_norm <- lapply(seq_along(all_samples), function(i) {
+    dt <- copy(all_samples[[i]])
+    dt[, rate := ComBatNorm[, i]]  # aligned rows, no mismatch
+    return(dt)
   })
-  names(result_samples) <- names(all_samples)
-  
+  names(all_norm) <- colnames(ComBatNorm)
+
   split_data <- list(
-    PseudoA = result_samples[seq_len(n_A)],
-    PseudoB = result_samples[seq(n_A + 1, nc)]
+    PseudoA = all_norm[grep(names(n_group)[1], names(all_norm))],
+    PseudoB = all_norm[grep(names(n_group)[2], names(all_norm))]
   )
   
   return(list(method = "ComBatMet", data = split_data))
@@ -441,6 +425,11 @@ run_all_methods <- function(pseudo_groups,
       params = pseudo_groups$params
     )
     
+    # RB for testing
+    # save(list = ls(all.names = TRUE),
+    #            file = "snapshot_priorToNorm.RData",
+    #            envir = environment())
+           
     result <- tryCatch({
       switch(m,
              raw = run_raw(pseudo_copy),

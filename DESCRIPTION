@@ -18,7 +18,8 @@ RoxygenNote: 8.0.0
 Imports: 
     data.table,
     ggplot2,
-    SMFnorm
+    SMFnorm,
+    ComBatMet
 Suggests: 
     GenomicRanges,
     IRanges,
