@@ -212,7 +212,7 @@ run_combatmet <- function(pseudo_groups) {
 
   n_group <- sapply(pseudo_groups, length)[1:2]
   k_group <- as.factor(rep(names(n_group), n_group))
-  k_batch <- as.factor(sequence(n_Group))
+  k_batch <- as.factor(sequence(n_group))
 
   ComBatNorm <- ComBat_met(
     vmat = rate_matrix,
