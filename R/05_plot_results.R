@@ -98,7 +98,7 @@ plot_sensitivity_curves <- function(spikein_dt, out_dir = NULL) {
     labs(
       title = "Sensitivity to Detect Spike-In DMRs",
       x = "Effect Size (Rate Difference)",
-      y = "Sensitivity (TP / (TP + FN))",
+      y = "Sensitivity (regions detected / regions injected)",
       color = "Method", shape = "Method"
     ) +
     theme_manuscript()

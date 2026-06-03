@@ -35,7 +35,8 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
     return(list(
       classification = classification,
       fn_regions = data.table(),
-      summary = c(TP = 0L, FP = n_called, FN = 0L)
+      summary = c(TP = 0L, FP = n_called, FN = 0L,
+                  n_regions = 0L, regions_detected = 0L)
     ))
   }
 
@@ -44,7 +45,8 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
     return(list(
       classification = data.table(),
       fn_regions = truth_regions,
-      summary = c(TP = 0L, FP = 0L, FN = nrow(truth_regions))
+      summary = c(TP = 0L, FP = 0L, FN = nrow(truth_regions),
+                  n_regions = nrow(truth_regions), regions_detected = 0L)
     ))
   }
 
@@ -99,10 +101,14 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
   fn_idx <- setdiff(all_truth_idx, matched_truth_idx)
   fn_regions <- truth_regions[fn_idx]
 
+  # TP/FP are call-level (one per called DMR); regions_detected/FN are
+  # region-level (one per truth region) so recall is a true per-region rate.
   summary_vec <- c(
     TP = sum(classification$label == "TP"),
     FP = sum(classification$label == "FP"),
-    FN = length(fn_idx)
+    FN = length(fn_idx),
+    n_regions = nrow(truth_regions),
+    regions_detected = length(matched_truth_idx)
   )
 
   return(list(
@@ -151,7 +157,9 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
   summary_vec <- c(
     TP = sum(classification$label == "TP"),
     FP = sum(classification$label == "FP"),
-    FN = sum(!truth_matched)
+    FN = sum(!truth_matched),
+    n_regions = nrow(truth_regions),
+    regions_detected = sum(truth_matched)
   )
 
   return(list(
@@ -164,19 +172,33 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
 
 # Performance metrics -----------------------------------------------------
 
-#' Compute performance metrics from TP/FP/FN counts
+#' Compute performance metrics from a classify_dmrs() summary
 #'
-#' @param summary_vec Named vector with TP, FP, FN counts.
-#' @return Named list of metrics: sensitivity, precision, specificity, F1, FDR.
+#' Recall (sensitivity) is REGION-level: the fraction of truth regions detected
+#' by at least one call, so wide regions fragmented into several DMR calls are
+#' not double-counted. Precision is CALL-level: the fraction of called DMRs that
+#' overlap a truth region. F1 combines the two.
+#'
+#' @param summary_vec Named vector with TP, FP, FN (and, for spike-in,
+#'   n_regions, regions_detected) as returned by [classify_dmrs()].
+#' @return Named list: TP, FP, FN, n_regions, regions_detected, sensitivity,
+#'   precision, FDR, F1, total_called.
 compute_metrics <- function(summary_vec) {
-  TP <- summary_vec["TP"]
-  FP <- summary_vec["FP"]
-  FN <- summary_vec["FN"]
+  TP <- unname(summary_vec["TP"])   # call-level
+  FP <- unname(summary_vec["FP"])   # call-level
+  FN <- unname(summary_vec["FN"])   # region-level (undetected truth regions)
 
-  sensitivity <- if (TP + FN > 0) TP / (TP + FN) else NA_real_  # recall / TPR
-  precision   <- if (TP + FP > 0) TP / (TP + FP) else NA_real_  # PPV
-  FDR         <- if (TP + FP > 0) FP / (TP + FP) else NA_real_  # false discovery rate
-  F1          <- if (!is.na(sensitivity) && !is.na(precision) && (sensitivity + precision) > 0) {
+  # Region-level fields (fall back to call-based values for legacy summaries).
+  n_regions <- if ("n_regions" %in% names(summary_vec))
+    unname(summary_vec["n_regions"]) else (TP + FN)
+  regions_detected <- if ("regions_detected" %in% names(summary_vec))
+    unname(summary_vec["regions_detected"]) else TP
+
+  sensitivity <- if (n_regions > 0) regions_detected / n_regions else NA_real_  # region recall
+  precision   <- if (TP + FP > 0) TP / (TP + FP) else NA_real_                  # call-level PPV
+  FDR         <- if (TP + FP > 0) FP / (TP + FP) else NA_real_
+  F1          <- if (!is.na(sensitivity) && !is.na(precision) &&
+                     (sensitivity + precision) > 0) {
     2 * sensitivity * precision / (sensitivity + precision)
   } else {
     NA_real_
@@ -184,6 +206,7 @@ compute_metrics <- function(summary_vec) {
 
   return(list(
     TP = TP, FP = FP, FN = FN,
+    n_regions = n_regions, regions_detected = regions_detected,
     sensitivity = round(sensitivity, 4),
     precision = round(precision, 4),
     FDR = round(FDR, 4),
@@ -213,6 +236,7 @@ compile_results <- function(all_results, scenario_labels = NULL) {
           scenario = scenario,
           method = method,
           TP = NA_integer_, FP = NA_integer_, FN = NA_integer_,
+          n_regions = NA_integer_, regions_detected = NA_integer_,
           sensitivity = NA_real_, precision = NA_real_,
           FDR = NA_real_, F1 = NA_real_, total_called = NA_integer_
         )
@@ -227,6 +251,8 @@ compile_results <- function(all_results, scenario_labels = NULL) {
         TP = metrics$TP,
         FP = metrics$FP,
         FN = metrics$FN,
+        n_regions = metrics$n_regions,
+        regions_detected = metrics$regions_detected,
         sensitivity = metrics$sensitivity,
         precision = metrics$precision,
         FDR = metrics$FDR,

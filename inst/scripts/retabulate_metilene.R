@@ -109,6 +109,8 @@ retab_spikein <- function(block_dir) {
                     method = basename(m),
                     TP = as.integer(met$TP), FP = as.integer(met$FP),
                     FN = as.integer(met$FN),
+                    n_regions = as.integer(met$n_regions),
+                    regions_detected = as.integer(met$regions_detected),
                     sensitivity = as.numeric(met$sensitivity),
                     precision = as.numeric(met$precision),
                     FDR = as.numeric(met$FDR), F1 = as.numeric(met$F1),
