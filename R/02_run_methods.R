@@ -303,10 +303,18 @@ prepare_metilene_input <- function(split_data, out_dir) {
 
 #' Call DMRs using metilene
 #'
-#' metilene's own column-4 q-value is unreliable, so q-values are recomputed in
-#' R: Benjamini-Hochberg correction of metilene's Mann-Whitney U p-value (column
-#' 7) across the candidate DMRs returned for each comparison. DMRs are then kept
-#' if the recomputed q-value is below `q_cutoff`.
+#' DMRs are kept if their q-value is below `q_cutoff`. Two q-values are stored:
+#' \describe{
+#'   \item{`q_metilene` (default)}{metilene's column-4 q-value, which is
+#'     Benjamini-Hochberg corrected over ALL tested segments. Validated against
+#'     the null (gives ~0 false positives where it should) and is the
+#'     statistically valid choice for the standard `min_diff > 0` workflow.}
+#'   \item{`q_bh`}{Benjamini-Hochberg recomputed in R from metilene's
+#'     Mann-Whitney U p-value (column 7). NOTE: this is ANTI-CONSERVATIVE when
+#'     `min_diff > 0`, because the reported DMRs are pre-filtered to
+#'     high-difference candidates (selection bias). It is only valid when
+#'     metilene is run with `min_diff = 0` so every tested segment is emitted.}
+#' }
 #'
 #' @param split_data Named list with PseudoA and PseudoB.
 #' @param out_dir Output directory.
@@ -314,17 +322,21 @@ prepare_metilene_input <- function(split_data, out_dir) {
 #' @param min_cpg Minimum number of CpGs/sites in a DMR (default: 5).
 #' @param min_diff Minimum mean difference to report (default: 0.1).
 #' @param metilene_max_dist Maximum distance between CpGs within a DMR.
-#' @param q_cutoff Significance threshold on the R-computed BH q-value
-#'   (default 0.05). Set to 1 to keep all candidate DMRs.
+#' @param q_cutoff Significance threshold on the chosen q-value (default 0.05).
+#'   Set to 1 to keep all candidate DMRs.
+#' @param q_source Which q-value to filter on: "metilene" (default, column-4 q)
+#'   or "BH" (R-recomputed; only valid with `min_diff = 0`).
 #' @return data.table of significant DMRs with columns: chr, start, end,
-#'   q_value (BH-recomputed), mean_diff, n_sites, p_mwu, q_metilene.
+#'   q_value (the chosen one), mean_diff, n_sites, p_mwu, q_metilene, q_bh.
 call_dmrs_metilene <- function(split_data,
                                out_dir,
                                metilene_path = "metilene",
                                min_cpg = 5,
                                min_diff = 0.1,
                                metilene_max_dist = 1500,
-                               q_cutoff = 0.05) {
+                               q_cutoff = 0.05,
+                               q_source = c("metilene", "BH")) {
+  q_source <- match.arg(q_source)
 
   # Prepare input files
   input_dir <- file.path(out_dir, "metilene_input")
@@ -368,7 +380,7 @@ call_dmrs_metilene <- function(split_data,
   empty <- data.table(
     chr = character(), start = integer(), end = integer(),
     q_value = numeric(), mean_diff = numeric(), n_sites = integer(),
-    p_mwu = numeric(), q_metilene = numeric()
+    p_mwu = numeric(), q_metilene = numeric(), q_bh = numeric()
   )
 
   if (!file.exists(out_file) || file.size(out_file) == 0) {
@@ -383,27 +395,26 @@ call_dmrs_metilene <- function(split_data,
   if (ncol(dmrs) >= 8) {
     setnames(dmrs, 1:8, c("chr", "start", "end", "q_metilene", "mean_diff",
                           "n_sites", "p_mwu", "p_2dks"))
-    # Recompute q-values in R (BH over this comparison's candidates) from the
-    # Mann-Whitney U p-value; metilene's own q-value is ignored.
-    dmrs[, q_value := p.adjust(p_mwu, method = "BH")]
-    dmrs <- dmrs[, .(chr, start, end, q_value, mean_diff, n_sites,
-                     p_mwu, q_metilene)]
+    dmrs[, q_bh := p.adjust(p_mwu, method = "BH")]
   } else if (ncol(dmrs) >= 6) {
-    warning("metilene output has <8 columns; cannot recompute q, ",
-            "using metilene's column-4 q-value")
-    setnames(dmrs, 1:6, c("chr", "start", "end", "q_value", "mean_diff",
+    warning("metilene output has <8 columns; only column-4 q available")
+    setnames(dmrs, 1:6, c("chr", "start", "end", "q_metilene", "mean_diff",
                           "n_sites"))
-    dmrs[, `:=`(p_mwu = NA_real_, q_metilene = q_value)]
-    dmrs <- dmrs[, .(chr, start, end, q_value, mean_diff, n_sites,
-                     p_mwu, q_metilene)]
+    dmrs[, `:=`(p_mwu = NA_real_, q_bh = NA_real_)]
   } else {
     return(empty)
   }
 
+  # Significance q-value. Default = metilene's column-4 q (valid genome-wide
+  # correction). "BH" uses the R-recomputed value, valid only with min_diff = 0.
+  dmrs[, q_value := if (q_source == "BH") q_bh else q_metilene]
+
   n_total <- nrow(dmrs)
   dmrs <- dmrs[is.finite(q_value) & q_value < q_cutoff]
-  message(sprintf("metilene: %d candidate DMRs, %d significant (BH q < %.3g)",
-                  n_total, nrow(dmrs), q_cutoff))
+  dmrs <- dmrs[, .(chr, start, end, q_value, mean_diff, n_sites,
+                   p_mwu, q_metilene, q_bh)]
+  message(sprintf("metilene: %d candidate DMRs, %d significant (%s q < %.3g)",
+                  n_total, nrow(dmrs), q_source, q_cutoff))
   return(dmrs)
 }
 

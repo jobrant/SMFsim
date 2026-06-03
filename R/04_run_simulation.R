@@ -45,7 +45,8 @@ parse_args <- function() {
     metilene_max_dist = 300,
     metilene_min_cpg  = 10,
     metilene_min_diff = 0.1,
-    metilene_qval     = 0.05,   # R-computed BH q-value cutoff for DMR significance
+    metilene_qval     = 0.05,   # q-value cutoff for DMR significance
+    metilene_q_source = "metilene",  # "metilene" (col-4 q) or "BH" (needs min_diff=0)
     within_alpha = 0.3,
     between_alpha = 0.5,
     min_coverage = 5,
@@ -376,7 +377,8 @@ run_spikein_simulation <- function(wt_reps, config) {
             min_cpg = config$metilene_min_cpg,
             min_diff = config$metilene_min_diff,
             metilene_max_dist = config$metilene_max_dist,
-            q_cutoff = config$metilene_qval %||% 0.05
+            q_cutoff = config$metilene_qval %||% 0.05,
+            q_source = config$metilene_q_source %||% "metilene"
           )
         }, error = function(e) {
           warning(sprintf("DMR calling failed for %s/%s/effect%.2f: %s",

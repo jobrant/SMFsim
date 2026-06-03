@@ -29,6 +29,14 @@ suppressWarnings(suppressMessages(library(data.table)))
 # === EDIT IF NEEDED ======================================================
 ROOT     <- "results/bias_experiment"
 Q_CUTOFF <- 0.05
+# Which q-value to filter on:
+#   "metilene" = metilene's column-4 q (corrected over ALL tested segments;
+#                statistically valid here, validated against the null).
+#   "BH"       = Benjamini-Hochberg recomputed in R from the MWU p-value, but
+#                only over the candidates in the .bed -- ANTI-CONSERVATIVE,
+#                because the -d filter pre-selects high-difference segments.
+#                Only valid if metilene was run with -d 0 (all segments emitted).
+Q_SOURCE <- "metilene"
 # =========================================================================
 
 # Internal package functions (available under load_all; fall back to namespace).
@@ -37,20 +45,21 @@ Q_CUTOFF <- 0.05
 .metrics  <- if (exists("compute_metrics")) compute_metrics else
     getFromNamespace("compute_metrics", "SMFsim")
 
-# Read a metilene_dmrs.bed, recompute BH q from the MWU p-value (col 7), and
-# return only the significant DMRs.
-read_significant_dmrs <- function(bed, q_cutoff) {
+# Read a metilene_dmrs.bed, compute both q-values, and return the DMRs that are
+# significant under the chosen q-source.
+read_significant_dmrs <- function(bed, q_cutoff, q_source = Q_SOURCE) {
     empty <- data.table(chr = character(), start = integer(), end = integer(),
-                        q_value = numeric(), mean_diff = numeric(),
-                        n_sites = integer())
+                        q_metilene = numeric(), q_bh = numeric(),
+                        mean_diff = numeric(), n_sites = integer())
     if (!file.exists(bed) || file.size(bed) == 0) return(empty)
     d <- tryCatch(fread(bed, header = FALSE), error = function(e) NULL)
     if (is.null(d) || ncol(d) < 8) return(empty)
     setnames(d, 1:8, c("chr", "start", "end", "q_metilene", "mean_diff",
                        "n_sites", "p_mwu", "p_2dks"))
-    d[, q_value := p.adjust(p_mwu, method = "BH")]
-    d[is.finite(q_value) & q_value < q_cutoff,
-      .(chr, start, end, q_value, mean_diff, n_sites)]
+    d[, q_bh := p.adjust(p_mwu, method = "BH")]   # anti-conservative over .bed
+    qcol <- if (q_source == "BH") "q_bh" else "q_metilene"
+    d <- d[is.finite(get(qcol)) & get(qcol) < q_cutoff]
+    d[, .(chr, start, end, q_metilene, q_bh, mean_diff, n_sites)]
 }
 
 dirs_of <- function(path) {
@@ -117,7 +126,8 @@ if (!dir.exists(ROOT)) stop("ROOT not found: ", ROOT)
 blocks <- dirs_of(ROOT)
 if (!length(blocks)) stop("No block directories under: ", ROOT)
 
-message(sprintf("Re-tabulating with BH q < %.3g over: %s", Q_CUTOFF, ROOT))
+message(sprintf("Re-tabulating with q_source=%s, q < %.3g over: %s",
+                Q_SOURCE, Q_CUTOFF, ROOT))
 
 for (block in blocks) {
     bn <- basename(block)
@@ -125,7 +135,7 @@ for (block in blocks) {
 
     null_dt <- retab_null(block)
     if (!is.null(null_dt)) {
-        out <- file.path(block, "null_results_qBH.csv")
+        out <- file.path(block, sprintf("null_results_q-%s.csv", Q_SOURCE))
         fwrite(null_dt, out)
         message("  null -> ", out)
         print(null_dt[order(scenario, method)])
@@ -133,7 +143,7 @@ for (block in blocks) {
 
     spk_dt <- retab_spikein(block)
     if (!is.null(spk_dt)) {
-        out <- file.path(block, "spikein_results_qBH.csv")
+        out <- file.path(block, sprintf("spikein_results_q-%s.csv", Q_SOURCE))
         fwrite(spk_dt, out)
         message("  spikein -> ", out)
         print(spk_dt[order(scenario, effect_size, method),
