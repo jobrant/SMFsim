@@ -395,9 +395,11 @@ run_spikein_simulation <- function(wt_reps, config) {
         all_results[[result_key]][[m_name]] <- eval_result
         metrics <- compute_metrics(eval_result$summary)
         
-        message(sprintf("    %s: TP=%d FP=%d FN=%d | sens=%.3f prec=%.3f F1=%.3f",
-                        m_name, metrics$TP, metrics$FP, metrics$FN,
-                        metrics$sensitivity, metrics$precision, metrics$F1))
+        message(sprintf(
+          "    %s: calls TP=%d FP=%d | regions det=%d/%d | sens=%.3f prec=%.3f F1=%.3f",
+          m_name, metrics$TP, metrics$FP,
+          metrics$regions_detected, metrics$n_regions,
+          metrics$sensitivity, metrics$precision, metrics$F1))
       }
     }
   }
