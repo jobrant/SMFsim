@@ -8,11 +8,12 @@
 
 #' Convert pseudo-group data to the format expected by SMFnorm
 #'
-#' Builds a nested list with sample_metadata attribute, mimicking load_data() output.
+#' Build a nested list with sample_metadata attribute, like load_data() output.
 #'
 #' @param pseudo_groups List from create_pseudo_groups() with PseudoA and PseudoB.
 #' @return List structured as load_data() output (flat sample list with metadata).
-format_for_smfnorm <- function(pseudo_groups) {
+format_for_smfnorm <-
+  function(pseudo_groups) {
   all_samples <- c(pseudo_groups$PseudoA, pseudo_groups$PseudoB)
 
   # Build sample metadata
@@ -28,6 +29,39 @@ format_for_smfnorm <- function(pseudo_groups) {
 
   attr(all_samples, "sample_metadata") <- metadata
   return(all_samples)
+}
+
+
+#' Filter pseudo-group samples to shared sites meeting the minimum coverage.
+#'
+#' SMFnorm requires all input samples to share the same site set. If we only
+#' apply `min_coverage` inside SMFnorm, samples with uneven coverage may be
+#' filtered differently and trigger unequal row counts.
+#'
+#' @param pseudo_groups List from create_pseudo_groups().
+#' @param min_coverage Minimum per-sample coverage threshold.
+#' @return Pseudo-group list with all samples filtered to the same shared sites.
+.filter_pseudo_groups_by_min_coverage <- function(pseudo_groups, min_coverage) {
+  if (is.null(min_coverage) || min_coverage <= 0) {
+    return(pseudo_groups)
+  }
+
+  all_samples <- c(pseudo_groups$PseudoA, pseudo_groups$PseudoB)
+  keep <- Reduce(`&`, lapply(all_samples, function(dt) dt$cov >= min_coverage))
+
+  if (!any(keep)) {
+    stop(sprintf("No sites remain after applying min_coverage = %d", min_coverage))
+  }
+
+  filtered <- lapply(all_samples, function(dt) dt[keep])
+  names(filtered) <- names(all_samples)
+
+  n_A <- length(pseudo_groups$PseudoA)
+  list(
+    PseudoA = filtered[seq_len(n_A)],
+    PseudoB = filtered[seq(n_A + 1, length(filtered))],
+    params = pseudo_groups$params
+  )
 }
 
 
@@ -165,7 +199,9 @@ run_SMFnorm <- function(pseudo_groups,
   message(sprintf("Method: SMFnorm (rate_between_groups = %s)",
                   rate_between_groups))
 
-  # Format as SMFnorm expects
+  # Ensure all samples share the same site set at the requested coverage.
+  pseudo_groups <- .filter_pseudo_groups_by_min_coverage(pseudo_groups,
+                                                         min_coverage)
   formatted <- format_for_smfnorm(pseudo_groups)
 
   # Split by groups
