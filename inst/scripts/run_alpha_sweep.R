@@ -29,8 +29,8 @@ suppressWarnings(suppressMessages(library(data.table)))
 
 # === EDIT THESE FOR YOUR ENVIRONMENT =====================================
 config <- parse_args()
-config$data_dir      <- "../m-series-data/allc"
-config$sample_sheet  <- "../m-series-data/sample_sheet.csv"
+config$data_dir      <- "../m-series-data/data/allc"
+config$sample_sheet  <- "../m-series-data/data/sample_sheet.csv"
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
 base_output          <- "results/alpha_sweep"
@@ -42,7 +42,7 @@ ALPHA_GRID <- seq(0.5, 0.9, 0.1)
 # FAST_TUNE: run on chr1 only with fewer spike-in regions so the whole sweep
 # finishes in ~1-2 h instead of ~8 h/alpha. Use it to find the rough optimum,
 # then re-confirm the chosen alpha on the full genome with FAST_TUNE <- FALSE.
-FAST_TUNE <- TRUE
+FAST_TUNE <- F
 # =========================================================================
 
 # Fixed settings — match the main bias run.
