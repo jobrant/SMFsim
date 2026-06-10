@@ -80,19 +80,19 @@ tryCatch({
 })
 
 # Print a quick summary table.
-for (method in unique(spikein_results$method)) {
-  dt <- spikein_results[method == !!method]
+for (method_name in unique(spikein_results$method)) {
+  dt <- spikein_results[method == method_name]
   tp <- sum(dt$TP)
   fp <- sum(dt$FP)
   fn <- sum(dt$FN)
   sens <- if (tp + fn > 0) tp / (tp + fn) else NA_real_
   prec <- if (tp + fp > 0) tp / (tp + fp) else NA_real_
   message(sprintf("%s: TP=%d, FP=%d, FN=%d, sens=%.4f, prec=%.4f",
-                  method, tp, fp, fn, sens, prec))
+                  method_name, tp, fp, fn, sens, prec))
 }
 
 message("Null false positives by method:")
-for (method in unique(null_results$method)) {
-  fp <- sum(null_results[method == !!method]$FP)
-  message(sprintf("  %s: FP=%d", method, fp))
+for (method_name in unique(null_results$method)) {
+  fp <- sum(null_results[method == method_name]$FP)
+  message(sprintf("  %s: FP=%d", method_name, fp))
 }
