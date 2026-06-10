@@ -188,6 +188,16 @@ Rscript inst/scripts/run_method_comparison_bias.R
 This script runs the full method comparison on the current between-group bias
 scenarios and saves both results and figures.
 
+### Real-data parameter test (M1 vs M2)
+
+```bash
+Rscript inst/scripts/run_real_data_parameter_test.R
+```
+
+This script runs all four methods on the real M1 vs M2 comparison and generates
+parallel results for SMFnorm with `rate_between_groups = FALSE` and
+`rate_between_groups = TRUE`.
+
 ### Real data comparison
 
 ```r
@@ -232,7 +242,8 @@ SMFsim/
 │       ├── simulation_testing.R
 │       ├── run_alpha_sweep.R
 │       ├── run_within_alpha_sweep.R
-│       └── run_method_comparison_bias.R
+│       ├── run_method_comparison_bias.R
+│       └── run_real_data_parameter_test.R
 ├── data/
 ├── results/
 ├── DESCRIPTION
