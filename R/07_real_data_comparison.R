@@ -49,8 +49,29 @@ load_real_data <- function(config, group_A = "PrEC", group_B = "PC3") {
 
   message(sprintf("Loaded %d total samples", length(all_samples)))
 
-  # Find shared sites (on coverage-filtered samples)
+  # Filter to standard chromosomes before find_shared_sites(). Non-standard
+  # contigs (e.g. *_random, Un_*) break SMFnorm's .chr_to_int() (NA coercion)
+  # and corrupt the shared-site intersection, leaving replicates with mismatched
+  # row counts. Mirrors prepare_wt_replicates().
+  if (config$standard_chr_only %||% TRUE) {
+    pattern <- config$chr_pattern %||% "^(chr)?([0-9]{1,2}|X|Y|M|MT)$"
+    n_before <- nrow(all_samples[[1]])
+    all_samples <- lapply(all_samples, function(dt) dt[grepl(pattern, chr)])
+    message(sprintf("Standard-chromosome filter: %d -> %d rows in sample 1",
+                    n_before, nrow(all_samples[[1]])))
+  }
+
+  # Find shared sites (on coverage- and chromosome-filtered samples)
   all_samples <- find_shared_sites(all_samples, filter = TRUE)
+
+  # Verify alignment: downstream code assumes all samples share the same sites
+  # in the same row order.
+  lens <- vapply(all_samples, nrow, integer(1))
+  if (length(unique(lens)) != 1L) {
+    stop(sprintf(
+      "Replicates not aligned after find_shared_sites (rows: %s). Check for non-standard contigs or duplicate sites.",
+      paste(lens, collapse = ", ")))
+  }
   message(sprintf("Shared sites: %d", nrow(all_samples[[1]])))
 
   # Split into groups based on sample metadata
