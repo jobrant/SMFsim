@@ -25,6 +25,7 @@
 #'   \item{group_A}{Named list of sample data.tables}
 #'   \item{group_B}{Named list of sample data.tables}
 #'   \item{group_names}{Character vector c(group_A, group_B)}
+#' @export
 load_real_data <- function(config, group_A = "PrEC", group_B = "PC3") {
   message("\n", strrep("=", 60))
   message(sprintf("Loading real data: %s vs %s", group_A, group_B))

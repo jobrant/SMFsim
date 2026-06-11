@@ -26,7 +26,7 @@ config <- list(
   metilene_path   = "/apps/metilene/0.2.8/metilene",
   metilene_min_cpg = 10,
   metilene_min_diff = 0.1,
-  min_coverage    = 5,
+  min_coverage    = 10,
   seed            = 42
 )
 
