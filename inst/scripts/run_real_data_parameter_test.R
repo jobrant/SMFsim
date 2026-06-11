@@ -30,7 +30,18 @@ group_A <- "M1"
 group_B <- "M2"
 
 message("Loading real data for groups: ", group_A, " vs ", group_B)
+
+# min_coverage is applied inside load_real_data() -> SMFnorm::load_data() at
+# read time (per file, before find_shared_sites), so no manual post-filtering
+# is needed here.
 real_data <- load_real_data(config, group_A, group_B)
+
+sample_rows <- vapply(c(real_data$group_A, real_data$group_B), nrow, integer(1))
+if (length(unique(sample_rows)) != 1L) {
+  stop("Shared-site filtering failed: sample row counts differ after find_shared_sites()")
+}
+message(sprintf("min_coverage = %d, shared sites after loading: %d",
+                config$min_coverage, sample_rows[1]))
 
 modes <- list(
   within_only = list(

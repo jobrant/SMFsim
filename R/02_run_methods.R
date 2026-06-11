@@ -508,8 +508,11 @@ run_all_methods <- function(pseudo_groups,
                               between_alpha = 0.5,
                               min_coverage = 5
                             )) {
+  # NOTE: min_coverage is applied upstream at load time (prepare_wt_replicates /
+  # load_real_data), before find_shared_sites, so every method here receives the
+  # identical filtered, shared-site set. Do not filter again at this stage.
   results <- list()
-  
+
   for (m in methods) {
     message(sprintf("\n=== Running method: %s ===", m))
     t0 <- Sys.time()

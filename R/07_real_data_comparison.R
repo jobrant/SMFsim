@@ -15,7 +15,10 @@
 
 #' Load and prepare real data for two-group comparison
 #'
-#' @param config List with data_dir, sample_sheet, and group names.
+#' @param config List with data_dir, sample_sheet, and group names. An optional
+#'   `min_coverage` element is forwarded to [SMFnorm::load_data()] so the
+#'   coverage filter is applied per file at read time, before
+#'   `find_shared_sites()`.
 #' @param group_A Character: name of group A (e.g., "PrEC").
 #' @param group_B Character: name of group B (e.g., "PC3").
 #' @return List with:
@@ -27,16 +30,25 @@ load_real_data <- function(config, group_A = "PrEC", group_B = "PC3") {
   message(sprintf("Loading real data: %s vs %s", group_A, group_B))
   message(strrep("=", 60))
 
+  # Apply min_coverage at read time so filtering happens before any downstream
+  # step (find_shared_sites, normalization). SMFnorm::load_data() filters each
+  # file as it is read.
+  min_coverage <- config$min_coverage %||% 0L
+  if (min_coverage > 0) {
+    message(sprintf("Applying min_coverage = %d at load time", min_coverage))
+  }
+
   # Load all samples from both groups
   all_samples <- load_data(
     dir_path = config$data_dir,
     sample_sheet = config$sample_sheet,
-    groups = c(group_A, group_B)
+    groups = c(group_A, group_B),
+    min_coverage = min_coverage
   )
 
   message(sprintf("Loaded %d total samples", length(all_samples)))
 
-  # Find shared sites
+  # Find shared sites (on coverage-filtered samples)
   all_samples <- find_shared_sites(all_samples, filter = TRUE)
   message(sprintf("Shared sites: %d", nrow(all_samples[[1]])))
 
