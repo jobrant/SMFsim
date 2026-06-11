@@ -54,9 +54,13 @@ load_real_data <- function(config, group_A = "PrEC", group_B = "PC3") {
   # and corrupt the shared-site intersection, leaving replicates with mismatched
   # row counts. Mirrors prepare_wt_replicates().
   if (config$standard_chr_only %||% TRUE) {
-    pattern <- config$chr_pattern %||% "^(chr)?([0-9]{1,2}|X|Y|M|MT)$"
+    pattern <- config$chr_pattern %||% "^(chr)?([0-9]{1,2}|X|Y)$"
     n_before <- nrow(all_samples[[1]])
+    # lapply() drops list attributes; preserve sample_metadata so the
+    # downstream group split (which reads it) still works.
+    sample_md <- attr(all_samples, "sample_metadata")
     all_samples <- lapply(all_samples, function(dt) dt[grepl(pattern, chr)])
+    attr(all_samples, "sample_metadata") <- sample_md
     message(sprintf("Standard-chromosome filter: %d -> %d rows in sample 1",
                     n_before, nrow(all_samples[[1]])))
   }

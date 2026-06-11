@@ -116,9 +116,11 @@ prepare_wt_replicates <- function(config) {
 
   message(sprintf("Loaded %d WT samples", length(all_samples)))
 
-  # Filter to standard chromosomes (autosomes + X/Y/M, with/without "chr")
+  # Filter to standard chromosomes (autosomes + X/Y, with/without "chr").
+  # Mitochondrial (M/MT) is excluded by default: SMFnorm's .chr_to_int() has no
+  # mapping for it (NA-coercion warnings) and it is not wanted for DMR calling.
   if (config$standard_chr_only %||% TRUE) {
-    pattern <- config$chr_pattern %||% "^(chr)?([0-9]{1,2}|X|Y|M|MT)$"
+    pattern <- config$chr_pattern %||% "^(chr)?([0-9]{1,2}|X|Y)$"
     n_before <- nrow(all_samples[[1]])
     all_samples <- lapply(all_samples, function(dt) dt[grepl(pattern, chr)])
     message(sprintf("Standard-chromosome filter: %d -> %d rows in sample 1",
