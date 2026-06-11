@@ -8,8 +8,12 @@
 # Usage:
 #   Rscript inst/scripts/run_real_data_parameter_test.R
 
-if (requireNamespace("devtools", quietly = TRUE) && file.exists("DESCRIPTION")) {
-  devtools::load_all(".")
+# Locate the package root whether this is launched from the package directory
+# itself or from one level up (e.g. the parent "simulation-testing" folder).
+pkg_dir <- if (file.exists("DESCRIPTION")) "." else "SMFsim"
+if (requireNamespace("devtools", quietly = TRUE) &&
+    file.exists(file.path(pkg_dir, "DESCRIPTION"))) {
+  devtools::load_all(pkg_dir)
 } else {
   library(SMFsim)
 }
