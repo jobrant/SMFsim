@@ -13,5 +13,5 @@ format_for_smfnorm(pseudo_groups)
 List structured as load_data() output (flat sample list with metadata).
 }
 \description{
-Builds a nested list with sample_metadata attribute, mimicking load_data() output.
+Build a nested list with sample_metadata attribute, like load_data() output.
 }

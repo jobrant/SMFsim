@@ -10,7 +10,9 @@ call_dmrs_metilene(
   metilene_path = "metilene",
   min_cpg = 5,
   min_diff = 0.1,
-  metilene_max_dist = 1500
+  metilene_max_dist = 1500,
+  q_cutoff = 0.05,
+  q_source = c("metilene", "BH")
 )
 }
 \arguments{
@@ -23,10 +25,30 @@ call_dmrs_metilene(
 \item{min_cpg}{Minimum number of CpGs/sites in a DMR (default: 5).}
 
 \item{min_diff}{Minimum mean difference to report (default: 0.1).}
+
+\item{metilene_max_dist}{Maximum distance between CpGs within a DMR.}
+
+\item{q_cutoff}{Significance threshold on the chosen q-value (default 0.05).
+Set to 1 to keep all candidate DMRs.}
+
+\item{q_source}{Which q-value to filter on: "metilene" (default, column-4 q)
+or "BH" (R-recomputed; only valid with \code{min_diff = 0}).}
 }
 \value{
-data.table of called DMRs with columns: chr, start, end, q_value, mean_diff, n_sites
+data.table of significant DMRs with columns: chr, start, end,
+q_value (the chosen one), mean_diff, n_sites, p_mwu, q_metilene, q_bh.
 }
 \description{
-Call DMRs using metilene
+DMRs are kept if their q-value is below \code{q_cutoff}. Two q-values are stored:
+\describe{
+\item{\code{q_metilene} (default)}{metilene's column-4 q-value, which is
+Benjamini-Hochberg corrected over ALL tested segments. Validated against
+the null (gives ~0 false positives where it should) and is the
+statistically valid choice for the standard \code{min_diff > 0} workflow.}
+\item{\code{q_bh}}{Benjamini-Hochberg recomputed in R from metilene's
+Mann-Whitney U p-value (column 7). NOTE: this is ANTI-CONSERVATIVE when
+\code{min_diff > 0}, because the reported DMRs are pre-filtered to
+high-difference candidates (selection bias). It is only valid when
+metilene is run with \code{min_diff = 0} so every tested segment is emitted.}
+}
 }

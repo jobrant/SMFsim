@@ -2,6 +2,7 @@
 
 export(generate_additional_figures)
 export(generate_all_figures)
+export(load_real_data)
 export(main)
 export(parse_args)
 export(prepare_wt_replicates)

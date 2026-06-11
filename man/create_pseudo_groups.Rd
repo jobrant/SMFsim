@@ -60,3 +60,31 @@ calibrates both the within-group spread and the between-group contrast.
 N vs N design (N = number of source replicates).}
 }
 }
+\section{Parametric sampling}{
+
+In "parametric" mode each pseudo-replicate is generated from a known per-site
+ground truth rather than by re-using realized counts, in three layers:
+\enumerate{
+\item True rate. A coverage-weighted pooled rate per site,
+\code{p_i = sum_r(mc_ir) / sum_r(cov_ir)} (\code{.pooled_rate()}), collapses the
+source replicates to one rate so all replicate variation can be
+regenerated and calibrated rather than inherited.
+\item Per-replicate draw (\code{.draw_parametric_rep()}, via
+\code{.betabinom_counts()}), reusing that replicate's REAL per-site coverage
+\code{cov_ij}: efficiency sets the target mean \code{mu_ij = p_i * e_j}; a latent
+rate is drawn \code{lambda_ij ~ Beta(mu_ij * s, (1 - mu_ij) * s)} (precision
+\code{s = dispersion_s}, giving \code{Var = mu(1-mu)/(s+1)}; \code{s = Inf} reduces to
+pure binomial); then \code{mc_ij ~ Binomial(cov_ij, lambda_ij)}.
+\item Independence. Every replicate is seeded independently (group A:
+\code{seed + i}, group B: \code{seed + 1000 + i}). Under the null both groups are
+drawn from the same \code{p_i}, so the between-group difference comes only from
+independent sampling and efficiency, with no shared realized noise to
+cancel (the failure of clone mode).
+}
+Coverage is preserved, not redrawn: each pseudo-replicate inherits its source
+replicate's per-site coverage (total depth unchanged) and only the methylated
+counts are drawn. For the spike-in layer the effect is injected into the true
+rate \code{p_i} for group B before this draw (see \code{inject_spikein_parametric()}),
+so it is a genuine biological difference that precedes efficiency and sampling.
+}
+

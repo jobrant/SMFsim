@@ -715,12 +715,12 @@ inject_spikein_dmrs <- function(dt,
 
 #' Inject spike-in DMRs into the true rate (parametric mode)
 #'
-#' Unlike [inject_spikein_dmrs()], which resamples realized counts, this shifts
+#' Unlike `inject_spikein_dmrs()`, which resamples realized counts, this shifts
 #' the per-site TRUE rate `p` within spike-in regions, returning a modified rate
 #' vector for group B. Replicates are then drawn from this rate by
 #' [.draw_parametric_rep()], so the spike-in is a genuine biological difference
 #' that precedes efficiency and sampling. Direction is rate-aware ("auto"),
-#' matching [inject_spikein_dmrs()].
+#' matching `inject_spikein_dmrs()`.
 #'
 #' @param ref_dt Reference data.table aligned to `p` (needs `chr`, `pos`).
 #' @param p Per-site true rate vector (e.g. from [.pooled_rate()]).

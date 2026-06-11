@@ -9,11 +9,11 @@
 Exogenous methyltransferase assays (MAPit, NOMe-seq, Fiber-seq) probe chromatin accessibility by treating genomic DNA with GpC methyltransferase (M.CviPI). Variation in enzyme efficiency between samples introduces systematic artifacts that can be mistaken for biological differences. Existing normalization approaches, including downsampling and ComBat-based batch correction, are not designed for this problem and can either amplify false positives or eliminate genuine biological signal. This framework provides a rigorous, simulation-based evaluation of how well different normalization methods separate technical artifacts from real biology.
 }
 \author{
-\strong{Maintainer}: Jason Brant Orr \email{jobrant@ufl.edu}
+\strong{Maintainer}: Jason Orr Brant \email{jobrant@ufl.edu}
 
 Authors:
 \itemize{
-  \item Jason Brant Orr \email{jobrant@ufl.edu}
+  \item Jason Orr Brant \email{jobrant@ufl.edu}
 }
 
 }

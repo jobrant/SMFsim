@@ -7,7 +7,10 @@
 load_real_data(config, group_A = "PrEC", group_B = "PC3")
 }
 \arguments{
-\item{config}{List with data_dir, sample_sheet, and group names.}
+\item{config}{List with data_dir, sample_sheet, and group names. An optional
+\code{min_coverage} element is forwarded to \code{\link[SMFnorm:load_data]{SMFnorm::load_data()}} so the
+coverage filter is applied per file at read time, before
+\code{find_shared_sites()}.}
 
 \item{group_A}{Character: name of group A (e.g., "PrEC").}
 

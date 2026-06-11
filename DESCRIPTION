@@ -2,7 +2,8 @@ Package: SMFsim
 Title: SMFsim: Single Molecule Footprinting Data simulation framework
 Version: 0.0.0.9000
 Authors@R: 
-    person("Jason", "Orr", "Brant", "jobrant@ufl.edu", role = c("aut", "cre"))
+    person(given = c("Jason", "Orr"), family = "Brant",
+           email = "jobrant@ufl.edu", role = c("aut", "cre"))
 Description: Exogenous methyltransferase assays (MAPit, NOMe-seq, Fiber-seq) probe 
     chromatin accessibility by treating genomic DNA with GpC methyltransferase (M.CviPI). 
     Variation in enzyme efficiency between samples introduces systematic artifacts 

@@ -12,27 +12,58 @@ Named list of scenarios, each with \code{label}, \code{efficiency_A},
 length-2 \verb{[min, max]} ranges for between-group bias scenarios).
 }
 \description{
-Two families of scenarios:
+Each scenario assigns a per-replicate M.CviPI conversion efficiency in (0, 1]
+(how completely the enzyme methylates accessible GpC sites; a less efficient
+sample under-methylates and looks less accessible). Two families are defined,
+differing in how the efficiency variation relates to the group (condition)
+labels.
+}
+\section{Within-group (specificity controls)}{
+
+\code{mild}, \code{moderate}, \code{severe}: explicit per-replicate efficiencies with matched
+group MEANS, so only the within-group spread varies and there is no systematic
+between-group bias. A well-behaved method should call few/no DMRs; these test
+specificity, not correction.
+}
+
+\section{Between-group bias (the artifact to correct)}{
+
+\verb{aligned_*} and \verb{imbalanced_*}, given as \verb{[min, max]} efficiency RANGES per
+group (sampled per replicate, so they adapt to any replicate count). These are
+what make un-normalized (raw) analysis produce false positives (null) and
+biased effects (spike-in).
 \describe{
-\item{Within-group (specificity controls)}{\code{mild}, \code{moderate}, \code{severe}.
-Explicit per-replicate efficiencies with matched group MEANS — only the
-within-group spread varies. There is no systematic between-group bias, so
-a well-behaved method should call few/no DMRs. These test specificity, not
-correction.}
-\item{Between-group bias (the artifact to correct)}{\verb{aligned_*} and
-\verb{imbalanced_*}. Specified as \verb{[min, max]} efficiency RANGES per group
-(sampled per replicate, so they adapt to any replicate count).
-\itemize{
-\item \verb{aligned_*}: NON-overlapping ranges — every group-A replicate is
-more efficient than every group-B replicate. A clean, label-aligned
-batch effect; the idealized case batch correction is built for.
-\item \verb{imbalanced_*}: OVERLAPPING but shifted ranges — group B skews
-lower on average, but individual replicates overlap. A realistic
-per-sample artifact that is NOT cleanly separable by group label, and
-is harder for label-based correction (matches the package's premise).
+\item{aligned (clean, group-level batch effect)}{NON-overlapping ranges:
+every group-A replicate is more efficient than every group-B replicate
+(\code{aligned_moderate}: A 0.83-0.93 vs B 0.68-0.78, mean gap ~0.15;
+\code{aligned_strong}: A 0.85-0.95 vs B 0.55-0.65, mean gap ~0.30). Models the
+case where the technical batch coincides with the condition, e.g. all of
+condition A processed on one day with a fresh enzyme lot and all of
+condition B on another day with an aged aliquot or lower SAM cofactor.
+Tests the idealized case for label-based correction (the batch maps onto
+the label) and, at the same time, the maximally confounded case for
+separating artifact from biology.}
+\item{imbalanced (per-sample variation)}{OVERLAPPING but shifted ranges:
+group B skews lower on average while individual replicates overlap
+(\code{imbalanced_moderate}: A 0.75-0.93 vs B 0.62-0.80, mean gap ~0.13;
+\code{imbalanced_strong}: A 0.72-0.95 vs B 0.50-0.73, mean gap ~0.22). Models
+efficiency as a per-sample nuisance (enzyme aliquot, incubation time, DNA
+quality) that only trends with condition, e.g. B is a tissue yielding more
+degraded DNA, or its samples were collected later as reagents aged, with
+no clean batch variable to regress out. Tests the realistic case this
+package targets: a per-sample artifact not captured by group labels, which
+a per-sample normalization should handle where a label-based one cannot.}
 }
 }
+
+\section{Note}{
+
+Both bias families still carry a between-group MEAN efficiency shift, and
+because DMR calling compares group means, both produce a similar confound — so
+empirically they behave similarly, with performance driven mainly by artifact
+magnitude (moderate vs strong) and effect size. Purely per-sample variation
+with matched group means produces no between-group artifact at all, which is
+why the matched-mean cases serve as specificity controls rather than
+correction tests.
 }
-Between-group bias scenarios are what make un-normalized (raw) analysis
-produce false positives (null) and biased effects (spike-in).
-}
+

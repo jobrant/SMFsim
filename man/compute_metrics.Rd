@@ -2,16 +2,21 @@
 % Please edit documentation in R/03_evaluate.R
 \name{compute_metrics}
 \alias{compute_metrics}
-\title{Compute performance metrics from TP/FP/FN counts}
+\title{Compute performance metrics from a classify_dmrs() summary}
 \usage{
 compute_metrics(summary_vec)
 }
 \arguments{
-\item{summary_vec}{Named vector with TP, FP, FN counts.}
+\item{summary_vec}{Named vector with TP, FP, FN (and, for spike-in,
+n_regions, regions_detected) as returned by \code{\link[=classify_dmrs]{classify_dmrs()}}.}
 }
 \value{
-Named list of metrics: sensitivity, precision, specificity, F1, FDR.
+Named list: TP, FP, FN, n_regions, regions_detected, sensitivity,
+precision, FDR, F1, total_called.
 }
 \description{
-Compute performance metrics from TP/FP/FN counts
+Recall (sensitivity) is REGION-level: the fraction of truth regions detected
+by at least one call, so wide regions fragmented into several DMR calls are
+not double-counted. Precision is CALL-level: the fraction of called DMRs that
+overlap a truth region. F1 combines the two.
 }
