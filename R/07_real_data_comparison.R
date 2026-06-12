@@ -212,7 +212,7 @@ run_all_methods_real <- function(real_data,
             do_coverage_norm = TRUE,
             normalize_rates = TRUE,
             coverage_between_groups = FALSE,
-            rate_within_groups = TRUE,
+            rate_within_groups = SMFnorm_params$rate_within_groups %||% TRUE,
             rate_between_groups = SMFnorm_params$rate_between_groups %||% FALSE,
             within_alpha = SMFnorm_params$within_alpha,
             between_alpha = SMFnorm_params$between_alpha,
@@ -520,7 +520,10 @@ method_colors <- c(
 
 
 #' Bar plot of total DMR counts per method
-plot_dmr_counts <- function(dmr_list, out_dir = NULL) {
+#'
+#' @param subtitle Optional plot subtitle (e.g. the group contrast). Default
+#'   NULL leaves it blank rather than hardcoding a label.
+plot_dmr_counts <- function(dmr_list, out_dir = NULL, subtitle = NULL) {
   count_dt <- data.table(
     method = names(dmr_list),
     n_dmrs = sapply(dmr_list, nrow)
@@ -533,7 +536,7 @@ plot_dmr_counts <- function(dmr_list, out_dir = NULL) {
     scale_fill_manual(values = method_colors, guide = "none") +
     labs(
       title = "Total DMRs Called per Method (Real Data)",
-      subtitle = "Cancer (PC3) vs Normal (PrEC)",
+      subtitle = subtitle,
       x = NULL, y = "Number of DMRs"
     ) +
     theme_manuscript()
@@ -608,7 +611,7 @@ plot_lost_dmr_effects <- function(dmr_list, classification, out_dir = NULL) {
       scale_fill_manual(values = c("Retained" = "#4DAF4A", "Lost" = "#E41A1C")) +
       labs(
         title = sprintf("DMRs Lost by %s vs Raw", m),
-        subtitle = "Small-effect lost DMRs suggest artifact removal",
+        subtitle = "Effect sizes of reference DMRs lost vs retained after normalization",
         x = "|Mean Difference|", y = "Density", fill = NULL
       ) +
       theme_manuscript()

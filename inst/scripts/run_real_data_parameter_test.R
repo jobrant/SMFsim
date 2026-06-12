@@ -3,7 +3,7 @@
 # run_real_data_parameter_test.R
 #
 # Test all four methods on real data (M1 vs M2) and compare SMFnorm with
-# within-only vs between-group correction.
+# within-group correction only vs both within + between-group correction.
 #
 # Usage:
 #   Rscript inst/scripts/run_real_data_parameter_test.R
@@ -47,15 +47,19 @@ if (length(unique(sample_rows)) != 1L) {
 message(sprintf("min_coverage = %d, shared sites after loading: %d",
                 config$min_coverage, sample_rows[1]))
 
+# Two correction regimes to compare. within-group correction is always on; the
+# modes differ only in whether between-group correction is added on top.
 modes <- list(
   within_only = list(
     within_alpha = 0.3,
     between_alpha = 0.8,
+    rate_within_groups = TRUE,
     rate_between_groups = FALSE
   ),
-  between_only = list(
+  both = list(
     within_alpha = 0.3,
     between_alpha = 0.8,
+    rate_within_groups = TRUE,
     rate_between_groups = TRUE
   )
 )
@@ -74,6 +78,7 @@ for (mode_name in names(modes)) {
     within_alpha = modes[[mode_name]]$within_alpha,
     between_alpha = modes[[mode_name]]$between_alpha,
     min_coverage = config$min_coverage,
+    rate_within_groups = modes[[mode_name]]$rate_within_groups,
     rate_between_groups = modes[[mode_name]]$rate_between_groups
   )
 
@@ -139,4 +144,5 @@ fwrite(combined_summary, file.path(config$output_dir, "dmr_summary_by_mode.csv")
 
 message("\nCompleted real-data parameter test for M1 vs M2")
 message("Results written to: ", normalizePath(config$output_dir, winslash = "/"))
-message("\nNote: 'between_only' is only likely appropriate if there is a true systematic technical bias aligned with the group labels.")
+message("\nNote: 'both' adds between-group correction on top of within-group, and is")
+message("only appropriate if there is a true systematic technical bias aligned with the group labels.")
