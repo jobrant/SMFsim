@@ -2,11 +2,17 @@
 
 # run_real_data_parameter_test.R
 #
-# Test all four methods on real data (M1 vs M2) and compare SMFnorm with
+# Test all four methods on a real two-group comparison and compare SMFnorm with
 # within-group correction only vs both within + between-group correction.
 #
-# Usage:
+# Usage (defaults to M1 vs M2, between_alpha 0.8):
 #   Rscript inst/scripts/run_real_data_parameter_test.R
+#
+# Parameterized for any pair (positional groups, optional --key value):
+#   Rscript inst/scripts/run_real_data_parameter_test.R M3 M4
+#   Rscript inst/scripts/run_real_data_parameter_test.R M3 M4 --between_alpha 0.9
+#   Rscript inst/scripts/run_real_data_parameter_test.R --group_A M3 --group_B M4 \
+#       --between_alpha 0.9 --output_dir results/real_data_M3_M4
 
 # Locate the package root whether this is launched from the package directory
 # itself or from one level up (e.g. the parent "simulation-testing" folder).
@@ -19,10 +25,31 @@ if (requireNamespace("devtools", quietly = TRUE) &&
 }
 suppressWarnings(suppressMessages(library(data.table)))
 
+# Parse command-line arguments: first two bare args are group_A/group_B; any
+# --key value pairs override (group_A, group_B, between_alpha, output_dir).
+cli <- commandArgs(trailingOnly = TRUE)
+positional <- character(0)
+opts <- list()
+i <- 1
+while (i <= length(cli)) {
+  if (startsWith(cli[i], "--")) {
+    opts[[sub("^--", "", cli[i])]] <- cli[i + 1]
+    i <- i + 2
+  } else {
+    positional <- c(positional, cli[i])
+    i <- i + 1
+  }
+}
+
+group_A <- opts$group_A %||% (if (length(positional) >= 1) positional[1] else "M1")
+group_B <- opts$group_B %||% (if (length(positional) >= 2) positional[2] else "M2")
+between_alpha <- as.numeric(opts$between_alpha %||% "0.8")
+output_dir <- opts$output_dir %||% sprintf("results/real_data_%s_%s", group_A, group_B)
+
 config <- list(
   data_dir        = "data/allc",
   sample_sheet    = "data/sample_sheet.csv",
-  output_dir      = "results/real_data_M1_M2",
+  output_dir      = output_dir,
   metilene_path   = "/apps/metilene/0.2.8/metilene",
   metilene_min_cpg = 10,
   metilene_min_diff = 0.1,
@@ -30,10 +57,8 @@ config <- list(
   seed            = 42
 )
 
-group_A <- "M1"
-group_B <- "M2"
-
-message("Loading real data for groups: ", group_A, " vs ", group_B)
+message(sprintf("Real-data comparison: %s vs %s  (between_alpha = %.2f, output = %s)",
+                group_A, group_B, between_alpha, output_dir))
 
 # min_coverage is applied inside load_real_data() -> SMFnorm::load_data() at
 # read time (per file, before find_shared_sites), so no manual post-filtering
@@ -52,13 +77,13 @@ message(sprintf("min_coverage = %d, shared sites after loading: %d",
 modes <- list(
   within_only = list(
     within_alpha = 0.3,
-    between_alpha = 0.8,
+    between_alpha = between_alpha,
     rate_within_groups = TRUE,
     rate_between_groups = FALSE
   ),
   both = list(
     within_alpha = 0.3,
-    between_alpha = 0.8,
+    between_alpha = between_alpha,
     rate_within_groups = TRUE,
     rate_between_groups = TRUE
   )
@@ -142,7 +167,7 @@ for (mode_name in names(modes)) {
 combined_summary <- rbindlist(results_summary)
 fwrite(combined_summary, file.path(config$output_dir, "dmr_summary_by_mode.csv"))
 
-message("\nCompleted real-data parameter test for M1 vs M2")
+message(sprintf("\nCompleted real-data parameter test for %s vs %s", group_A, group_B))
 message("Results written to: ", normalizePath(config$output_dir, winslash = "/"))
 message("\nNote: 'both' adds between-group correction on top of within-group, and is")
 message("only appropriate if there is a true systematic technical bias aligned with the group labels.")

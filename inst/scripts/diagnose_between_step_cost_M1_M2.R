@@ -21,8 +21,14 @@
 # within-only vs both from the rate_between_groups flag stored in each, so it
 # does not depend on folder names.
 #
-# Usage (from package root or one level up):
+# Usage (defaults to M1 vs M2):
 #   Rscript inst/scripts/diagnose_between_step_cost_M1_M2.R
+#
+# Parameterized for any pair (positional groups, optional --key value). It reads
+# the run_real_data_parameter_test.R output for that pair (results/real_data_<A>_<B>):
+#   Rscript inst/scripts/diagnose_between_step_cost_M1_M2.R M3 M4
+#   Rscript inst/scripts/diagnose_between_step_cost_M1_M2.R --group_A M3 --group_B M4 \
+#       --results_dir results/real_data_M3_M4
 
 pkg_dir <- if (file.exists("DESCRIPTION")) "." else "SMFsim"
 if (requireNamespace("devtools", quietly = TRUE) &&
@@ -36,19 +42,40 @@ suppressWarnings(suppressMessages({
   library(ggplot2)
 }))
 
+# Parse command-line arguments: first two bare args are group_A/group_B; any
+# --key value pairs override (group_A, group_B, results_dir, output_dir).
+cli <- commandArgs(trailingOnly = TRUE)
+positional <- character(0)
+opts <- list()
+i <- 1
+while (i <= length(cli)) {
+  if (startsWith(cli[i], "--")) {
+    opts[[sub("^--", "", cli[i])]] <- cli[i + 1]
+    i <- i + 2
+  } else {
+    positional <- c(positional, cli[i])
+    i <- i + 1
+  }
+}
+group_A <- opts$group_A %||% (if (length(positional) >= 1) positional[1] else "M1")
+group_B <- opts$group_B %||% (if (length(positional) >= 2) positional[2] else "M2")
+results_dir <- opts$results_dir %||% sprintf("results/real_data_%s_%s", group_A, group_B)
+
 config <- list(
-  results_dir = "results/real_data_M1_M2",
-  output_dir  = "results/real_data_M1_M2/between_step_cost",
+  results_dir = results_dir,
+  output_dir  = opts$output_dir %||% file.path(results_dir, "between_step_cost"),
   min_overlap_bp = 1L,
   # For the within-group variance test (needs per-site data):
   data_dir          = "data/allc",
   sample_sheet      = "data/sample_sheet.csv",
   min_coverage      = 10,
-  group_A           = "M1",
-  group_B           = "M2",
+  group_A           = group_A,
+  group_B           = group_B,
   near_threshold_max = 0.15   # focus the variance test on the fragile tail
 )
 dir.create(config$output_dir, recursive = TRUE, showWarnings = FALSE)
+message(sprintf("Between-step cost: %s vs %s  (reading %s)",
+                group_A, group_B, config$results_dir))
 
 # --- Locate and classify the two runs -------------------------------------
 rds_files <- list.files(config$results_dir, pattern = "real_data_results\\.rds$",
@@ -180,8 +207,12 @@ fate <- rbindlist(list(
 ))
 fate[, dmr_id := .I]
 
-# Variance needs per-site rates; reuse real_data if present, else load it.
-if (!exists("real_data")) {
+# Variance needs per-site rates; reuse real_data only if it matches THIS pair
+# (guards against a stale object from another pair in an interactive session).
+real_data_ok <- exists("real_data") &&
+  identical(sort(real_data$group_names),
+            sort(c(config$group_A, config$group_B)))
+if (!real_data_ok) {
   message("\nLoading real_data for the variance test...")
   real_data <- load_real_data(
     list(data_dir = config$data_dir, sample_sheet = config$sample_sheet,
