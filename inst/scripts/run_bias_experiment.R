@@ -22,22 +22,22 @@
 
 # --- Load package --------------------------------------------------------
 if (requireNamespace("devtools", quietly = TRUE) && file.exists("DESCRIPTION")) {
-    devtools::load_all(".")
+    devtools::load_all("SMFsim/")
 } else {
     library(SMFsim)
 }
 
 # === EDIT THESE FOR YOUR ENVIRONMENT =====================================
 config <- parse_args()
-config$data_dir      <- "../m-series-data/allc"
-config$sample_sheet  <- "../m-series-data/sample_sheet.csv"
+config$data_dir      <- "data/allc"
+config$sample_sheet  <- "data/sample_sheet.csv"
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
 base_output          <- "results/bias_experiment"
 
 # Optional extra runs / outputs (off by default to keep the job lean).
 RUN_CLONE_BASELINE <- FALSE   # rerun bias scenarios under clone mode for contrast
-MAKE_FIGURES       <- FALSE   # generate manuscript figures after each block
+MAKE_FIGURES       <- TRUE   # generate manuscript figures after each block
 # =========================================================================
 
 # --- Simulation settings (shared across blocks) --------------------------
