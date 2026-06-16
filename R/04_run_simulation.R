@@ -151,6 +151,28 @@ prepare_wt_replicates <- function(config) {
 
 # Layer 1: Null simulation ------------------------------------------------
 
+#' Validate requested scenario names against the available set.
+#'
+#' Without this, an empty/unknown `config$scenarios` selects zero scenarios, the
+#' results table comes back column-less, and the downstream compile step fails
+#' with a cryptic "object 'scenario' not found". This turns that into a clear,
+#' actionable message naming the offending entries.
+#' @noRd
+.assert_known_scenarios <- function(requested, available) {
+  if (length(requested) == 0L) {
+    stop("config$scenarios is empty or NULL - no scenarios to run. ",
+         "Set it to a subset of: ", paste(available, collapse = ", "),
+         call. = FALSE)
+  }
+  bad <- setdiff(requested, available)
+  if (length(bad)) {
+    stop("Unknown scenario(s) in config$scenarios: ", paste(bad, collapse = ", "),
+         ".\n  Available scenarios are: ", paste(available, collapse = ", "),
+         ".\n  (If you expected these to exist, the running copy of ",
+         "get_efficiency_scenarios() is out of date.)", call. = FALSE)
+  }
+}
+
 #' Run the null simulation (false positive assessment)
 #'
 #' @param wt_reps Named list of WT replicate data.tables.
@@ -163,6 +185,7 @@ run_null_simulation <- function(wt_reps, config) {
   message(strrep("=", 60))
 
   scenarios <- get_efficiency_scenarios()
+  .assert_known_scenarios(config$scenarios, names(scenarios))
   scenarios <- scenarios[config$scenarios]
 
   null_results <- list()
@@ -250,6 +273,7 @@ run_spikein_simulation <- function(wt_reps, config) {
   message(strrep("=", 60))
   
   scenarios <- get_efficiency_scenarios()
+  .assert_known_scenarios(config$scenarios, names(scenarios))
   scenarios <- scenarios[config$scenarios]
 
   sim_mode <- config$sim_mode %||% "clone"
