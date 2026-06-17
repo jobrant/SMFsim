@@ -374,6 +374,11 @@ call_dmrs_metilene <- function(split_data,
                                q_source = c("metilene", "BH")) {
   q_source <- match.arg(q_source)
 
+  if (length(metilene_path) == 0L || !nzchar(metilene_path)) {
+    stop("call_dmrs_metilene: metilene_path is empty/NULL. ",
+         "Set config$metilene_path to the metilene binary path.", call. = FALSE)
+  }
+
   # Prepare input files
   input_dir <- file.path(out_dir, "metilene_input")
   bedgraph_files <- prepare_metilene_input(split_data, input_dir)
@@ -511,6 +516,12 @@ run_all_methods <- function(pseudo_groups,
   # NOTE: min_coverage is applied upstream at load time (prepare_wt_replicates /
   # load_real_data), before find_shared_sites, so every method here receives the
   # identical filtered, shared-site set. Do not filter again at this stage.
+  if (length(methods) == 0L) {
+    stop("run_all_methods: `methods` is empty/NULL. Set config$methods to a ",
+         "non-empty subset of c('raw','downsampled','SMFnorm','ComBatMet').",
+         call. = FALSE)
+  }
+
   results <- list()
 
   for (m in methods) {
@@ -546,7 +557,13 @@ run_all_methods <- function(pseudo_groups,
       results[[m]] <- result
     }
   }
-  
+
+  if (length(results) == 0L) {
+    stop(sprintf("run_all_methods: every requested method failed (%s) - no ",
+                 "results to return. See warnings() for the per-method error(s).",
+                 paste(methods, collapse = ", ")), call. = FALSE)
+  }
+
   return(results)
 }
 
