@@ -44,7 +44,7 @@ config <- list(
     wt_group_id  = "M1",
     scenarios    = c("mild", "moderate", "severe"),
     seed         = 42,
-    min_coverage = 5
+    min_coverage = 10
 )
 
 # Keep only standard chromosomes. Non-standard contigs (e.g. *_random, Un_*)
