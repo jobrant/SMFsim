@@ -48,7 +48,7 @@ parse_args <- function() {
     metilene_qval     = 0.05,   # q-value cutoff for DMR significance
     metilene_q_source = "metilene",  # "metilene" (col-4 q) or "BH" (needs min_diff=0)
     within_alpha = 0.3,
-    between_alpha = 0.8,
+    between_alpha = 0.9,
     min_coverage = 10,
     dispersion_s = Inf,    # Beta precision for overdispersion; Inf = pure binomial
     sim_mode = "parametric",    # pseudo-group construction: "clone" or "parametric"
