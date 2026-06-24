@@ -46,10 +46,9 @@ config$dispersion_s      <- 26                      # calibrated to M-series
 config$effect_sizes      <- c(0.10, 0.15, 0.20, 0.30)
 config$seed              <- 42
 config$standard_chr_only <- TRUE
-# DMR-calling thresholds and method list keep parse_args() defaults; override
-# here if needed, e.g.:
-# config$methods         <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
-# config$metilene_min_cpg <- 10
+config$metilene_min_cpg <- 10
+config$methods         <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
+
 
 dir.create(base_output, recursive = TRUE, showWarnings = FALSE)
 
