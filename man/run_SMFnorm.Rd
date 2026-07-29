@@ -7,8 +7,8 @@
 run_SMFnorm(
   pseudo_groups,
   within_alpha = 0.3,
-  between_alpha = 0.5,
-  min_coverage = 5,
+  between_alpha = 0.9,
+  min_coverage = 10,
   rate_between_groups = FALSE
 )
 }
