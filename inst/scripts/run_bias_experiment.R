@@ -50,6 +50,30 @@ config$metilene_min_cpg <- 10
 config$methods         <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
 
 
+# --- Guard: never silently overwrite a previous run ----------------------
+# Every block writes under base_output, which is a fixed path, so re-running
+# lands on top of whatever is already there and destroys it in place. That is
+# how an earlier run was lost -- not by anyone deleting it. Abort instead, and
+# require the overwrite to be deliberate.
+#
+# To overwrite on purpose:  SMFSIM_OVERWRITE=1 Rscript inst/scripts/run_bias_experiment.R
+overwrite_ok <- identical(Sys.getenv("SMFSIM_OVERWRITE"), "1")
+
+if (dir.exists(base_output) &&
+    length(list.files(base_output, all.files = TRUE, no.. = TRUE)) > 0) {
+    if (!overwrite_ok) {
+        stop(sprintf(
+            paste0("Output directory already exists and is not empty:\n  %s\n",
+                   "Refusing to overwrite a previous run. Archive it under a ",
+                   "dated name, point `base_output` at a new path, or re-run ",
+                   "with SMFSIM_OVERWRITE=1 to overwrite deliberately."),
+            normalizePath(base_output, mustWork = FALSE)),
+            call. = FALSE)
+    }
+    message("SMFSIM_OVERWRITE=1 set -- overwriting existing results in ",
+            base_output)
+}
+
 dir.create(base_output, recursive = TRUE, showWarnings = FALSE)
 
 # --- Load and prepare source replicates once -----------------------------
