@@ -4,7 +4,11 @@
 \alias{plot_dmr_counts}
 \title{Bar plot of total DMR counts per method}
 \usage{
-plot_dmr_counts(dmr_list, out_dir = NULL)
+plot_dmr_counts(dmr_list, out_dir = NULL, subtitle = NULL)
+}
+\arguments{
+\item{subtitle}{Optional plot subtitle (e.g. the group contrast). Default
+NULL leaves it blank rather than hardcoding a label.}
 }
 \description{
 Bar plot of total DMR counts per method
