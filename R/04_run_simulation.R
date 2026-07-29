@@ -101,7 +101,7 @@ prepare_wt_replicates <- function(config) {
   # downstream step (standard-chr filter, find_shared_sites, pseudo-group
   # construction). SMFnorm::load_data() filters each file as it is read, so the
   # subsequent find_shared_sites() intersects already-filtered samples.
-  min_coverage <- config$min_coverage %||% 5L
+  min_coverage <- config$min_coverage %||% 10L
   if (min_coverage > 0) {
     message(sprintf("Applying min_coverage = %d at load time", min_coverage))
   }
@@ -211,7 +211,7 @@ run_null_simulation <- function(wt_reps, config) {
       SMFnorm_params = list(
         within_alpha = config$within_alpha,
         between_alpha = config$between_alpha,
-        min_coverage = config$min_coverage %||% 5,
+        min_coverage = config$min_coverage %||% 10,
         rate_between_groups = config$rate_between_groups %||% FALSE
       )
     )

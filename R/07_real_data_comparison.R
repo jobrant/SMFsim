@@ -34,7 +34,7 @@ load_real_data <- function(config, group_A = "PrEC", group_B = "PC3") {
   # Apply min_coverage at read time so filtering happens before any downstream
   # step (find_shared_sites, normalization). SMFnorm::load_data() filters each
   # file as it is read.
-  min_coverage <- config$min_coverage %||% 0L
+  min_coverage <- config$min_coverage %||% 10L
   if (min_coverage > 0) {
     message(sprintf("Applying min_coverage = %d at load time", min_coverage))
   }
@@ -135,7 +135,7 @@ run_all_methods_real <- function(real_data,
                                  SMFnorm_params = list(
                                    within_alpha = 0.3,
                                    between_alpha = 0.9,
-                                   min_coverage = 5
+                                   min_coverage = 10
                                  )) {
   group_A_name <- real_data$group_names[1]
   group_B_name <- real_data$group_names[2]

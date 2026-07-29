@@ -194,7 +194,7 @@ run_downsampled <- function(pseudo_groups) {
 run_SMFnorm <- function(pseudo_groups,
                         within_alpha = 0.3,
                         between_alpha = 0.9,
-                        min_coverage = 5,
+                        min_coverage = 10,
                         rate_between_groups = FALSE) {
   message(sprintf("Method: SMFnorm (rate_between_groups = %s)",
                   rate_between_groups))
@@ -511,7 +511,7 @@ run_all_methods <- function(pseudo_groups,
                             SMFnorm_params = list(
                               within_alpha = 0.3,
                               between_alpha = 0.9,
-                              min_coverage = 5
+                              min_coverage = 10
                             )) {
   # NOTE: min_coverage is applied upstream at load time (prepare_wt_replicates /
   # load_real_data), before find_shared_sites, so every method here receives the
