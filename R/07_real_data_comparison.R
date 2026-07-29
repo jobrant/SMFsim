@@ -134,7 +134,7 @@ run_all_methods_real <- function(real_data,
                                              "SMFnorm", "ComBatMet"),
                                  SMFnorm_params = list(
                                    within_alpha = 0.3,
-                                   between_alpha = 0.5,
+                                   between_alpha = 0.9,
                                    min_coverage = 5
                                  )) {
   group_A_name <- real_data$group_names[1]

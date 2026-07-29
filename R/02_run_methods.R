@@ -193,7 +193,7 @@ run_downsampled <- function(pseudo_groups) {
 #' @return Named list with method = "SMFnorm" and normalized split data.
 run_SMFnorm <- function(pseudo_groups,
                         within_alpha = 0.3,
-                        between_alpha = 0.5,
+                        between_alpha = 0.9,
                         min_coverage = 5,
                         rate_between_groups = FALSE) {
   message(sprintf("Method: SMFnorm (rate_between_groups = %s)",
@@ -510,7 +510,7 @@ run_all_methods <- function(pseudo_groups,
                             methods = c("raw", "downsampled", "SMFnorm", "ComBatMet"),
                             SMFnorm_params = list(
                               within_alpha = 0.3,
-                              between_alpha = 0.5,
+                              between_alpha = 0.9,
                               min_coverage = 5
                             )) {
   # NOTE: min_coverage is applied upstream at load time (prepare_wt_replicates /
