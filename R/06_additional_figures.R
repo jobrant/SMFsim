@@ -31,11 +31,8 @@ method_labels <- c(
   "ComBatMet"   = "ComBatMet"
 )
 
-scenario_labels <- c(
-  mild = "Mild Efficiency Bias",
-  moderate = "Moderate Efficiency Bias",
-  severe = "Severe Efficiency Bias"
-)
+# scenario_labels / .scenario_factor / .scenario_label are defined in
+# 05_plot_results.R and shared across both figure files.
 
 
 # Figure 6: Side-by-side sensitivity + precision panels -------------------
@@ -51,8 +48,7 @@ plot_sensitivity_precision_panels <- function(spikein_dt, out_dir = NULL) {
   plot_dt <- copy(spikein_dt)
   plot_dt[, method := factor(method, levels = names(method_colors))]
 
-  scenario_order <- c("mild", "moderate", "severe")
-  plot_dt[, efficiency_scenario := factor(efficiency_scenario, levels = scenario_order)]
+  plot_dt[, efficiency_scenario := .scenario_factor(efficiency_scenario)]
 
   # Reshape to long format for faceting by metric
   sens_dt <- plot_dt[, .(method, effect_size, efficiency_scenario, value = sensitivity)]
@@ -69,7 +65,7 @@ plot_sensitivity_precision_panels <- function(spikein_dt, out_dir = NULL) {
     geom_line(linewidth = 0.8) +
     geom_point(size = 2.5) +
     facet_grid(metric ~ efficiency_scenario,
-               labeller = labeller(efficiency_scenario = scenario_labels)) +
+               labeller = labeller(efficiency_scenario = .scenario_label)) +
     scale_color_manual(values = method_colors, labels = method_labels) +
     scale_shape_manual(values = c(16, 17, 15, 18), labels = method_labels) +
     scale_x_continuous(breaks = c(0.05, 0.10, 0.15, 0.20, 0.30)) +
@@ -104,8 +100,7 @@ plot_call_breakdown <- function(spikein_dt, out_dir = NULL) {
   plot_dt <- copy(spikein_dt)
   plot_dt[, method := factor(method, levels = names(method_colors))]
 
-  scenario_order <- c("mild", "moderate", "severe")
-  plot_dt[, efficiency_scenario := factor(efficiency_scenario, levels = scenario_order)]
+  plot_dt[, efficiency_scenario := .scenario_factor(efficiency_scenario)]
 
   # Reshape TP and FP to long
   tp_dt <- plot_dt[, .(method, effect_size, efficiency_scenario, count = TP, type = "True Positive")]
@@ -120,7 +115,7 @@ plot_call_breakdown <- function(spikein_dt, out_dir = NULL) {
     geom_col(position = "stack", width = 0.7) +
     facet_grid(efficiency_scenario ~ method,
                labeller = labeller(
-                 efficiency_scenario = scenario_labels,
+                 efficiency_scenario = .scenario_label,
                  method = method_labels
                ),
                scales = "free_y") +
@@ -159,8 +154,7 @@ plot_researcher_view <- function(spikein_dt, target_effect = 0.3, out_dir = NULL
   plot_dt <- spikein_dt[effect_size == target_effect]
   plot_dt[, method := factor(method, levels = names(method_colors))]
 
-  scenario_order <- c("mild", "moderate", "severe")
-  plot_dt[, efficiency_scenario := factor(efficiency_scenario, levels = scenario_order)]
+  plot_dt[, efficiency_scenario := .scenario_factor(efficiency_scenario)]
 
   # Build a "researcher's view" — for each call, what % is real?
   plot_dt[, pct_real := ifelse(total_called > 0, TP / total_called * 100, NA)]
@@ -172,7 +166,7 @@ plot_researcher_view <- function(spikein_dt, target_effect = 0.3, out_dir = NULL
     geom_text(aes(label = paste0("TP=", TP, "\nFP=", FP)),
               vjust = -0.8, size = 3, lineheight = 0.85) +
     facet_wrap(~ efficiency_scenario, ncol = 3,
-               labeller = labeller(efficiency_scenario = scenario_labels)) +
+               labeller = labeller(efficiency_scenario = .scenario_label)) +
     scale_color_gradient2(
       low = "#E41A1C", mid = "#FFFFBF", high = "#4DAF4A",
       midpoint = 50, limits = c(0, 100),
@@ -212,15 +206,14 @@ plot_f1_lines <- function(spikein_dt, out_dir = NULL) {
   plot_dt <- copy(spikein_dt)
   plot_dt[, method := factor(method, levels = names(method_colors))]
 
-  scenario_order <- c("mild", "moderate", "severe")
-  plot_dt[, efficiency_scenario := factor(efficiency_scenario, levels = scenario_order)]
+  plot_dt[, efficiency_scenario := .scenario_factor(efficiency_scenario)]
 
   p <- ggplot(plot_dt[!is.na(F1)],
               aes(x = effect_size, y = F1, color = method, shape = method)) +
     geom_line(linewidth = 0.8) +
     geom_point(size = 2.5) +
     facet_wrap(~ efficiency_scenario,
-               labeller = labeller(efficiency_scenario = scenario_labels)) +
+               labeller = labeller(efficiency_scenario = .scenario_label)) +
     scale_color_manual(values = method_colors, labels = method_labels) +
     scale_shape_manual(values = c(16, 17, 15, 18), labels = method_labels) +
     scale_x_continuous(breaks = c(0.05, 0.10, 0.15, 0.20, 0.30)) +

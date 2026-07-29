@@ -31,6 +31,55 @@ method_labels <- c(
 )
 
 
+# Scenario ordering and labels --------------------------------------------
+# Display labels for every scenario in get_efficiency_scenarios(). Keep in
+# sync when scenarios are added there.
+scenario_labels <- c(
+  mild                = "Mild Within-Group",
+  moderate            = "Moderate Within-Group",
+  severe              = "Severe Within-Group",
+  aligned_moderate    = "Aligned Bias (moderate)",
+  aligned_strong      = "Aligned Bias (strong)",
+  imbalanced_moderate = "Imbalanced Bias (moderate)",
+  imbalanced_strong   = "Imbalanced Bias (strong)"
+)
+
+#' Order scenario values without dropping unknown ones
+#'
+#' Returns `x` as a factor ordered by the canonical scenario order from
+#' [get_efficiency_scenarios()]. Values outside that order are appended rather
+#' than silently converted to `NA`. A hardcoded level vector that predated the
+#' between-group bias scenarios previously mapped every row to `NA`, collapsing
+#' all facets into a single empty panel.
+#'
+#' @param x Character vector of scenario names.
+#' @return Factor whose levels are the values present in `x`.
+#' @keywords internal
+.scenario_factor <- function(x) {
+  x <- as.character(x)
+  canonical <- names(get_efficiency_scenarios())
+  present <- unique(x[!is.na(x)])
+  unknown <- setdiff(present, canonical)
+  if (length(unknown) > 0) {
+    warning("Unrecognised efficiency scenario(s): ",
+            paste(unknown, collapse = ", "), call. = FALSE)
+  }
+  factor(x, levels = c(intersect(canonical, present), sort(unknown)))
+}
+
+#' Facet labeller that falls back to the raw scenario name
+#'
+#' @param x Character vector of scenario names.
+#' @return Character vector of display labels.
+#' @keywords internal
+.scenario_label <- function(x) {
+  x <- as.character(x)
+  out <- unname(scenario_labels[x])
+  out[is.na(out)] <- x[is.na(out)]
+  out
+}
+
+
 # Figure 1: Null simulation — false positive counts -----------------------
 
 #' Bar plot of false positive DMR counts across scenarios and methods
@@ -41,13 +90,13 @@ method_labels <- c(
 plot_null_fp <- function(null_dt, out_dir = NULL) {
   null_dt[, method := factor(method, levels = names(method_colors))]
 
-  # Order scenarios by severity
-  scenario_order <- c("mild", "moderate", "severe")
-  null_dt[, scenario := factor(scenario, levels = scenario_order)]
+  # Order scenarios canonically
+  null_dt[, scenario := .scenario_factor(scenario)]
 
   p <- ggplot(null_dt, aes(x = scenario, y = FP, fill = method)) +
     geom_col(position = position_dodge(width = 0.8), width = 0.7) +
     scale_fill_manual(values = method_colors, labels = method_labels) +
+    scale_x_discrete(labels = .scenario_label) +
     labs(
       title = "False Positive DMRs Under Null (No True Differences)",
       x = "Enzyme Efficiency Scenario",
@@ -78,19 +127,14 @@ plot_null_fp <- function(null_dt, out_dir = NULL) {
 plot_sensitivity_curves <- function(spikein_dt, out_dir = NULL) {
   spikein_dt[, method := factor(method, levels = names(method_colors))]
 
-  scenario_order <- c("mild", "moderate", "severe")
-  spikein_dt[, efficiency_scenario := factor(efficiency_scenario, levels = scenario_order)]
+  spikein_dt[, efficiency_scenario := .scenario_factor(efficiency_scenario)]
 
   p <- ggplot(spikein_dt, aes(x = effect_size, y = sensitivity,
                                color = method, shape = method)) +
     geom_line(linewidth = 0.8) +
     geom_point(size = 2.5) +
     facet_wrap(~ efficiency_scenario,
-               labeller = labeller(efficiency_scenario = c(
-                 mild = "Mild Efficiency Bias",
-                 moderate = "Moderate Efficiency Bias",
-                 severe = "Severe Efficiency Bias"
-               ))) +
+               labeller = labeller(efficiency_scenario = .scenario_label)) +
     scale_color_manual(values = method_colors, labels = method_labels) +
     scale_shape_manual(values = c(16, 17, 15, 18), labels = method_labels) +
     scale_x_continuous(breaks = c(0.05, 0.10, 0.15, 0.20, 0.30)) +
@@ -122,16 +166,13 @@ plot_f1_heatmap <- function(spikein_dt, out_dir = NULL) {
   spikein_dt[, method := factor(method, levels = rev(names(method_colors)))]
   spikein_dt[, effect_label := factor(paste0(effect_size * 100, "%"))]
 
-  scenario_order <- c("mild", "moderate", "severe")
-  spikein_dt[, efficiency_scenario := factor(efficiency_scenario, levels = scenario_order)]
+  spikein_dt[, efficiency_scenario := .scenario_factor(efficiency_scenario)]
 
   p <- ggplot(spikein_dt, aes(x = effect_label, y = method, fill = F1)) +
     geom_tile(color = "white", linewidth = 0.5) +
     geom_text(aes(label = sprintf("%.2f", F1)), size = 3.2, color = "black") +
     facet_wrap(~ efficiency_scenario, ncol = 1,
-               labeller = labeller(efficiency_scenario = c(
-                 mild = "Mild", moderate = "Moderate", severe = "Severe"
-               ))) +
+               labeller = labeller(efficiency_scenario = .scenario_label)) +
     scale_fill_gradient2(low = "#E41A1C", mid = "#FFFFBF", high = "#4DAF4A",
                          midpoint = 0.5, limits = c(0, 1),
                          na.value = "grey90") +
@@ -197,8 +238,7 @@ plot_precision_recall <- function(spikein_dt, out_dir = NULL) {
 plot_fdr <- function(spikein_dt, out_dir = NULL) {
   spikein_dt[, method := factor(method, levels = names(method_colors))]
 
-  scenario_order <- c("mild", "moderate", "severe")
-  spikein_dt[, efficiency_scenario := factor(efficiency_scenario, levels = scenario_order)]
+  spikein_dt[, efficiency_scenario := .scenario_factor(efficiency_scenario)]
 
   p <- ggplot(spikein_dt, aes(x = effect_size, y = FDR,
                                color = method, shape = method)) +
@@ -206,9 +246,7 @@ plot_fdr <- function(spikein_dt, out_dir = NULL) {
     geom_point(size = 2.5) +
     geom_hline(yintercept = 0.05, linetype = "dashed", color = "grey50") +
     facet_wrap(~ efficiency_scenario,
-               labeller = labeller(efficiency_scenario = c(
-                 mild = "Mild", moderate = "Moderate", severe = "Severe"
-               ))) +
+               labeller = labeller(efficiency_scenario = .scenario_label)) +
     scale_color_manual(values = method_colors, labels = method_labels) +
     scale_shape_manual(values = c(16, 17, 15, 18), labels = method_labels) +
     scale_y_continuous(limits = c(0, 1)) +
