@@ -10,8 +10,8 @@ Description: Exogenous methyltransferase assays (MAPit, NOMe-seq, Fiber-seq) pro
     that can be mistaken for biological differences. Existing normalization approaches, 
     including downsampling and ComBat-based batch correction, are not designed for this 
     problem and can either amplify false positives or eliminate genuine biological signal.
-    .
-    This framework provides a rigorous, simulation-based evaluation of how well different normalization methods separate technical artifacts from real biology.
+ .
+      This framework provides a rigorous, simulation-based evaluation of how well different normalization methods separate technical artifacts from real biology.
 License: GPL (>= 3)
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -23,4 +23,6 @@ Imports:
 Suggests: 
     GenomicRanges,
     IRanges,
-    S4Vectors
+    S4Vectors,
+    testthat (>= 3.0.0)
+Config/testthat/edition: 3
