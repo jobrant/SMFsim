@@ -45,9 +45,14 @@ FAST_TUNE <- FALSE
 
 # Fixed settings — within-group scenarios only, no between-group artifact.
 config$sim_mode            <- "parametric"
-config$dispersion_s        <- Inf
+# s = 26 is the M-series calibration (diagnose_variance.R). This was previously
+# Inf (pure binomial), which gives a within-group SD of ~0.064 against the real
+# ~0.083 - i.e. the within-group correction was being tuned on data ~20% less
+# variable than the data it is meant to correct. run_alpha_sweep.R already used
+# 26; this script was the odd one out.
+config$dispersion_s        <- 26
 config$rate_between_groups <- FALSE
-config$between_alpha       <- 0.8            # held fixed; only within_alpha sweeps
+config$between_alpha       <- 0.9            # held fixed; only within_alpha sweeps
 config$methods             <- c("SMFnorm")   # only within_alpha-dependent method
 config$scenarios           <- c("mild", "moderate", "severe")
 config$effect_sizes        <- c(0.10, 0.15, 0.20, 0.30)
