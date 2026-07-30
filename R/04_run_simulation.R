@@ -44,9 +44,29 @@ parse_args <- function() {
     methods       = c("raw", "downsampled", "SMFnorm", "ComBatMet"),
     metilene_max_dist = 300,
     metilene_min_cpg  = 10,
-    metilene_min_diff = 0.1,
+    # --- DMR significance -------------------------------------------------
+    # Significance and effect size are assessed SEPARATELY:
+    #   metilene runs with -d 0, so every tested segment is emitted;
+    #   Benjamini-Hochberg is then computed in R across ALL of them;
+    #   |mean_diff| is applied afterwards as its own criterion.
+    # Verified 2026-07-30 that metilene's -d filters OUTPUT ONLY (the -d 0.1
+    # segments are a strict subset of the -d 0 segments), so -d 0 yields the
+    # same tests unfiltered. On one comparison this took the BH denominator
+    # from 568 emitted segments to 32162 tested ones - the ~57x under-correction
+    # that made the old min_diff>0 + q_source="BH" combination anti-conservative.
+    metilene_min_diff = 0,      # metilene -d: 0 = emit every tested segment
+    metilene_min_effect = 0.1,  # R-side |mean_diff| cut, applied AFTER q filtering
     metilene_qval     = 0.05,   # q-value cutoff for DMR significance
-    metilene_q_source = "metilene",  # "metilene" (col-4 q) or "BH" (needs min_diff=0)
+    metilene_q_source = "BH",   # "BH" (R-side, full denominator) or "metilene" (col-4 q)
+    # VERIFIED 2026-07-30 via inst/scripts/diagnose_metilene_qvalues.R: metilene
+    # corrects the 2D-KS p-value (column 8), NOT the MWU p-value the manual
+    # claims. Backed out from a Bonferroni run: q/p_ks is constant at 985949
+    # (relative spread 1e-4), matching metilene's own "Number of Tests" line,
+    # while q/p_mwu ranges over ~1200 orders of magnitude.
+    metilene_p_column = "2dks",
+    metilene_mtc      = 2,   # metilene -c: 1 = Bonferroni, 2 = BH/FDR. Only affects
+                             # the stored q_metilene column; set to 2 so it differs
+                             # from q_bh by DENOMINATOR alone, as a cross-check.
     within_alpha = 0.3,
     between_alpha = 0.9,
     min_coverage = 10,
@@ -230,8 +250,13 @@ run_null_simulation <- function(wt_reps, config) {
           out_dir = dmr_dir,
           metilene_path = config$metilene_path,
           min_cpg = config$metilene_min_cpg,
-          min_diff = config$metilene_min_diff, 
-          metilene_max_dist = config$metilene_max_dist
+          min_diff = config$metilene_min_diff,
+          metilene_max_dist = config$metilene_max_dist,
+          q_cutoff = config$metilene_qval %||% 0.05,
+          q_source = config$metilene_q_source %||% "metilene",
+          p_column = config$metilene_p_column %||% "2dks",
+          min_effect = config$metilene_min_effect %||% 0,
+          mtc = config$metilene_mtc %||% 1
         )
       }, error = function(e) {
         warning(sprintf("DMR calling failed for %s/%s: %s", sc_name, m_name, e$message))
@@ -414,7 +439,10 @@ run_spikein_simulation <- function(wt_reps, config) {
             min_diff = config$metilene_min_diff,
             metilene_max_dist = config$metilene_max_dist,
             q_cutoff = config$metilene_qval %||% 0.05,
-            q_source = config$metilene_q_source %||% "metilene"
+            q_source = config$metilene_q_source %||% "metilene",
+            p_column = config$metilene_p_column %||% "2dks",
+            min_effect = config$metilene_min_effect %||% 0,
+            mtc = config$metilene_mtc %||% 1
           )
         }, error = function(e) {
           warning(sprintf("DMR calling failed for %s/%s/effect%.2f: %s",

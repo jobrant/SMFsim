@@ -226,67 +226,138 @@ run_SMFnorm <- function(pseudo_groups,
 
 # Method: ComBatMet (via external call) -----------------------------------
 
+#' Derive a ComBat batch label from per-replicate enzyme efficiency
+#'
+#' ComBat requires a discrete batch variable, but the artifact SMFsim simulates
+#' is a continuous per-replicate efficiency. Splitting replicates at the median
+#' efficiency gives the batch label an analyst could plausibly construct from
+#' QC (high- vs low-efficiency samples).
+#'
+#' The split is deliberately scenario-dependent, and that is the point:
+#' \itemize{
+#'   \item `imbalanced_*` scenarios draw the two groups' efficiencies from
+#'     OVERLAPPING ranges, so the split crosses the group boundary and ComBat
+#'     has a genuine, separable artifact to remove.
+#'   \item `aligned_*` scenarios use non-overlapping ranges, so the split
+#'     reproduces the group labels exactly. Batch is then perfectly confounded
+#'     with group and no batch-correction method can separate artifact from
+#'     biology.
+#' }
+#'
+#' @param params `params` element of a [create_pseudo_groups()] result.
+#' @param n_A,n_B Replicate counts for the two pseudo-groups.
+#' @return Factor of batch labels, PseudoA replicates first then PseudoB.
+#' @keywords internal
+.efficiency_batch <- function(params, n_A, n_B) {
+  eff <- c(params$efficiency_A, params$efficiency_B)
+  if (length(eff) != n_A + n_B) {
+    stop("run_combatmet: params$efficiency_A/B hold ", length(eff),
+         " values but there are ", n_A + n_B, " replicates. Pass an explicit ",
+         "`batch` instead.", call. = FALSE)
+  }
+  factor(ifelse(eff > stats::median(eff), "high_eff", "low_eff"),
+         levels = c("low_eff", "high_eff"))
+}
+
+
 #' Run ComBatMet normalization
 #'
-#' ComBatMet uses a ComBat-based approach on methylation beta values.
-#' This wrapper prepares a matrix, runs ComBat, and converts back.
+#' Wraps [ComBatMet::ComBat_met()], the published ComBat-met beta-regression
+#' batch correction, on the per-site rate matrix.
 #'
-#' @param pseudo_groups List from create_pseudo_groups().
+#' The biological group is passed as `group` with `full_mod = TRUE` so it enters
+#' the model and is PROTECTED; only batch effects are removed. Batch defaults to
+#' an efficiency stratum from [.efficiency_batch()].
+#'
+#' Note: an earlier version of this function hand-rolled a "mean-only"
+#' adjustment that subtracted each group's own mean and added the grand mean.
+#' That forces both group means to the grand mean at every site, making the
+#' group difference identically zero, so no DMR could ever be called. It was
+#' also not ComBat-met. Both problems are fixed here.
+#'
+#' @param pseudo_groups List from [create_pseudo_groups()].
+#' @param batch Optional explicit batch factor, one entry per replicate ordered
+#'   PseudoA then PseudoB. Defaults to the median-efficiency split.
 #' @return Named list with method = "ComBatMet" and normalized split data.
-run_combatmet <- function(pseudo_groups) {
-  message("Method: ComBatMet (manual mean-only)")
-  
-  all_samples <- lapply(
-    c(pseudo_groups$PseudoA, pseudo_groups$PseudoB),
-    data.table::copy
-  )
-  names(all_samples) <- c(names(pseudo_groups$PseudoA), names(pseudo_groups$PseudoB))
+run_combatmet <- function(pseudo_groups, batch = NULL) {
+  if (!requireNamespace("ComBatMet", quietly = TRUE)) {
+    stop("run_combatmet: package 'ComBatMet' is not installed. Install it with ",
+         "remotes::install_github('JmWangBio/ComBatMet'), or drop 'ComBatMet' ",
+         "from config$methods.", call. = FALSE)
+  }
+
   n_A <- length(pseudo_groups$PseudoA)
-  nc <- length(all_samples)
-  
-  # Build rate matrix
-  rate_matrix <- do.call(cbind, lapply(all_samples, function(dt) as.numeric(dt$rate)))
+  n_B <- length(pseudo_groups$PseudoB)
+
+  all_samples <- c(lapply(pseudo_groups$PseudoA, data.table::copy),
+                   lapply(pseudo_groups$PseudoB, data.table::copy))
+  names(all_samples) <- c(names(pseudo_groups$PseudoA),
+                          names(pseudo_groups$PseudoB))
+
+  group <- factor(rep(c("PseudoA", "PseudoB"), c(n_A, n_B)),
+                  levels = c("PseudoA", "PseudoB"))
+  if (is.null(batch)) {
+    batch <- .efficiency_batch(pseudo_groups$params, n_A, n_B)
+  }
+  batch <- as.factor(batch)
+
+  message("Method: ComBatMet (ComBat_met, group protected)")
+  message("  batch: ",
+          paste(sprintf("%s=%s", names(all_samples), as.character(batch)),
+                collapse = ", "))
+
+  # ComBat cannot separate a batch effect from biology when every batch level
+  # sits entirely inside one group. Fail loudly rather than silently returning
+  # group-centred (zero-difference) data, which is what the old implementation
+  # did for every scenario.
+  confounded <- all(rowSums(table(batch, group) > 0) == 1)
+  if (nlevels(batch) < 2 || confounded) {
+    stop("run_combatmet: batch is perfectly confounded with group (each batch ",
+         "level falls entirely within one group), so ComBat cannot separate ",
+         "the efficiency artifact from biological signal. This is expected for ",
+         "the aligned_* scenarios, whose efficiency ranges do not overlap - ",
+         "report the method as inapplicable there, not as zero sensitivity.",
+         call. = FALSE)
+  }
+
+  rate_matrix <- do.call(cbind,
+                         lapply(all_samples, function(dt) as.numeric(dt$rate)))
   colnames(rate_matrix) <- names(all_samples)
-  nr <- nrow(rate_matrix)
-  
-  # Bound rates away from 0 and 1 (in place to preserve matrix)
-  rate_matrix[rate_matrix < 1e-6] <- 1e-6
-  rate_matrix[rate_matrix > (1 - 1e-6)] <- 1 - 1e-6
-  
-  # Logit transform (in place to preserve matrix)
-  logit_rates <- rate_matrix
-  logit_rates[] <- log(rate_matrix / (1 - rate_matrix))
-  
-  message("  logit_rates dim: ", nrow(logit_rates), " x ", ncol(logit_rates))
-  
-  # Mean-only batch correction
-  grand_mean <- rowMeans(logit_rates)
-  batch_A_mean <- rowMeans(logit_rates[, 1:n_A, drop = FALSE])
-  batch_B_mean <- rowMeans(logit_rates[, (n_A+1):nc, drop = FALSE])
-  
-  adjusted <- logit_rates
-  adjusted[, 1:n_A] <- adjusted[, 1:n_A] - batch_A_mean + grand_mean
-  adjusted[, (n_A+1):nc] <- adjusted[, (n_A+1):nc] - batch_B_mean + grand_mean
-  
-  # Inverse logit
-  adjusted_rates <- adjusted
-  adjusted_rates[] <- 1 / (1 + exp(-adjusted))
-  
-  message("  adjusted_rates dim: ", nrow(adjusted_rates), " x ", ncol(adjusted_rates))
-  
-  result_samples <- lapply(seq_len(nc), function(i) {
-    out <- copy(all_samples[[i]])
-    out[, rate := adjusted_rates[, i]]
+
+  # ComBat_met swaps in pseudo_beta for exact 0/1 but errors on anything outside
+  # (0, 1); keep inputs strictly inside the beta support.
+  eps <- 1e-6
+  rate_matrix[rate_matrix < eps] <- eps
+  rate_matrix[rate_matrix > 1 - eps] <- 1 - eps
+
+  adjusted <- ComBatMet::ComBat_met(
+    vmat = rate_matrix,
+    dtype = "b-value",
+    batch = batch,
+    group = group,
+    full_mod = TRUE,
+    ncores = 1
+  )
+
+  if (!identical(dim(adjusted), dim(rate_matrix))) {
+    stop("run_combatmet: ComBat_met returned a ", nrow(adjusted), " x ",
+         ncol(adjusted), " matrix, expected ", nrow(rate_matrix), " x ",
+         ncol(rate_matrix), ".", call. = FALSE)
+  }
+
+  result_samples <- lapply(seq_along(all_samples), function(i) {
+    out <- all_samples[[i]]
+    out[, rate := as.numeric(adjusted[, i])]
     out[, mc := as.integer(round(cov * rate))]
-    return(out)
+    out
   })
   names(result_samples) <- names(all_samples)
-  
+
   split_data <- list(
     PseudoA = result_samples[seq_len(n_A)],
-    PseudoB = result_samples[seq(n_A + 1, nc)]
+    PseudoB = result_samples[n_A + seq_len(n_B)]
   )
-  
+
   return(list(method = "ComBatMet", data = split_data))
 }
 
@@ -341,16 +412,40 @@ prepare_metilene_input <- function(split_data, out_dir) {
 #'
 #' DMRs are kept if their q-value is below `q_cutoff`. Two q-values are stored:
 #' \describe{
-#'   \item{`q_metilene` (default)}{metilene's column-4 q-value, which is
-#'     Benjamini-Hochberg corrected over ALL tested segments. Validated against
-#'     the null (gives ~0 false positives where it should) and is the
-#'     statistically valid choice for the standard `min_diff > 0` workflow.}
+#'   \item{`q_metilene` (default)}{metilene's column-4 q-value, corrected over
+#'     ALL tested segments using the method chosen by `mtc`: Bonferroni
+#'     (`mtc = 1`, metilene's own default) or Benjamini-Hochberg / FDR
+#'     (`mtc = 2`). Because the denominator covers every tested segment rather
+#'     than only the emitted ones, this is the statistically valid choice for
+#'     the standard `min_diff > 0` workflow. Validated against the null (gives
+#'     ~0 false positives where it should).}
 #'   \item{`q_bh`}{Benjamini-Hochberg recomputed in R from metilene's
-#'     Mann-Whitney U p-value (column 7). NOTE: this is ANTI-CONSERVATIVE when
-#'     `min_diff > 0`, because the reported DMRs are pre-filtered to
-#'     high-difference candidates (selection bias). It is only valid when
-#'     metilene is run with `min_diff = 0` so every tested segment is emitted.}
+#'     Mann-Whitney U p-value (column 7), corrected over the FULL number of
+#'     tests metilene reports (`Number of Tests:` on stderr, read by
+#'     [.metilene_n_tests()]), not over the emitted rows.}
 #' }
+#'
+#' The denominator is the whole problem here. metilene emits far fewer segments
+#' than it tests - on one comparison, 985949 tests against 32162 emitted rows at
+#' `-d 0`, and only 568 rows at `-d 0.1`. Running `p.adjust()` over the emitted
+#' rows therefore under-corrects by roughly 30x at `-d 0` and 1700x at
+#' `-d 0.1`; the latter produced 819 false positives in a true null where the
+#' column-4 q gave 0.
+#'
+#' To compute your own FDR in R rather than relying on metilene's correction:
+#' ```
+#' call_dmrs_metilene(..., min_diff = 0, q_source = "BH", min_effect = 0.1)
+#' ```
+#' `min_diff` is metilene's `-d` (which segments get emitted), while
+#' `min_effect` is an R-side `|mean_diff|` filter applied AFTER q-value
+#' filtering, so significance and effect size stay separable.
+#'
+#' Assumption worth stating in any write-up: supplying `p.adjust()` a subset of
+#' p-values with `n =` the full test count treats the withheld tests as
+#' non-significant. That is appropriate when the withheld tests are less
+#' significant than the emitted ones, which is why `min_diff = 0` matters - it
+#' makes the emitted set as complete as metilene will report. Validate against
+#' the null (a true null should yield ~0 false positives) rather than assuming.
 #'
 #' @param split_data Named list with PseudoA and PseudoB.
 #' @param out_dir Output directory.
@@ -362,6 +457,26 @@ prepare_metilene_input <- function(split_data, out_dir) {
 #'   Set to 1 to keep all candidate DMRs.
 #' @param q_source Which q-value to filter on: "metilene" (default, column-4 q)
 #'   or "BH" (R-recomputed; only valid with `min_diff = 0`).
+#' @param p_column Which metilene p-value the R-side BH is computed from:
+#'   "2dks" (column 8, 2D Kolmogorov-Smirnov; the default) or "mwu" (column 7,
+#'   Mann-Whitney U). metilene's manual says its q-value corrects the MWU
+#'   p-value, but that is WRONG for de-novo mode: verified by backing the
+#'   denominator out of a Bonferroni run, `q / p_2dks` is constant at metilene's
+#'   reported test count while `q / p_mwu` varies over ~1200 orders of
+#'   magnitude. Defaulting to "2dks" keeps `q_bh` and `q_metilene` measuring the
+#'   same underlying statistic, so they differ only by correction method and
+#'   denominator. See `inst/scripts/diagnose_metilene_qvalues.R`.
+#' @param min_effect Minimum `|mean_diff|` required of a DMR, applied in R
+#'   AFTER q-value filtering. Default 0 (no filtering) preserves the historical
+#'   behaviour, where the effect-size cut was done solely by metilene's `-d`.
+#'   Set this together with `min_diff = 0` and `q_source = "BH"` to compute the
+#'   FDR yourself over all tested segments.
+#' @param mtc Multiple-testing correction metilene applies to its column-4
+#'   q-value, passed through as `-c`: 1 = Bonferroni (metilene's default,
+#'   retained here so existing results stay reproducible), 2 = Benjamini-Hochberg
+#'   (FDR). Note that `mtc = 2` computes BH over ALL tested segments inside
+#'   metilene, which is NOT the same as - and is statistically preferable to -
+#'   the selection-biased `q_source = "BH"` recomputation.
 #' @return data.table of significant DMRs with columns: chr, start, end,
 #'   q_value (the chosen one), mean_diff, n_sites, p_mwu, q_metilene, q_bh.
 call_dmrs_metilene <- function(split_data,
@@ -371,8 +486,30 @@ call_dmrs_metilene <- function(split_data,
                                min_diff = 0.1,
                                metilene_max_dist = 1500,
                                q_cutoff = 0.05,
-                               q_source = c("metilene", "BH")) {
+                               q_source = c("metilene", "BH"),
+                               p_column = c("2dks", "mwu"),
+                               min_effect = 0,
+                               mtc = 1L) {
   q_source <- match.arg(q_source)
+  p_column <- match.arg(p_column)
+
+  mtc <- as.integer(mtc)
+  if (length(mtc) != 1L || is.na(mtc) || !mtc %in% c(1L, 2L)) {
+    stop("call_dmrs_metilene: `mtc` must be 1 (Bonferroni) or 2 ",
+         "(Benjamini-Hochberg/FDR); got ", deparse(mtc), ".", call. = FALSE)
+  }
+
+  # The R-side BH is only honest over a complete set of tested segments. With
+  # metilene's -d pre-filter in play, the .bed holds only high-difference
+  # candidates, so p.adjust() sees a selected subset and under-corrects.
+  if (q_source == "BH" && min_diff > 0) {
+    warning("call_dmrs_metilene: q_source = 'BH' with min_diff = ", min_diff,
+            " (> 0) is ANTI-CONSERVATIVE. metilene's -d pre-filters the ",
+            "emitted segments, so the R-side BH corrects over a selected ",
+            "subset. Use min_diff = 0 with min_effect = ",
+            if (min_effect > 0) min_effect else "<your effect cut>",
+            ", or q_source = 'metilene'.", call. = FALSE)
+  }
 
   if (length(metilene_path) == 0L || !nzchar(metilene_path)) {
     stop("call_dmrs_metilene: metilene_path is empty/NULL. ",
@@ -398,24 +535,34 @@ call_dmrs_metilene <- function(split_data,
 
   out_file <- file.path(out_dir, "metilene_dmrs.bed")
 
+  # metilene reports its total test count on stderr ("Number of Tests: N").
+  # That is the correct BH denominator, and it is much larger than the number of
+  # segments emitted: on one comparison, 985949 tests vs 32162 emitted rows even
+  # at -d 0. Capture the log rather than discarding it to /dev/null.
+  log_file <- file.path(out_dir, "metilene_log.txt")
+
+  # -c selects metilene's multiple-testing correction for its column-4 q-value:
+  # 1 = Bonferroni (metilene's default), 2 = Benjamini-Hochberg (FDR). Passed
+  # explicitly so the correction is recorded rather than left implicit.
   cmd <- sprintf(
-    "%s -a PseudoA -b PseudoB -m %d -d %f -M %d %s > %s 2>/dev/null",
-    metilene_path, min_cpg, min_diff, metilene_max_dist, merged_input, out_file
+    "%s -a PseudoA -b PseudoB -m %d -d %f -M %d -c %d %s > %s 2> %s",
+    metilene_path, min_cpg, min_diff, metilene_max_dist, mtc,
+    merged_input, out_file, log_file
   )
 
   message("Running metilene: ", cmd)
   exit_code <- system(cmd)
 
   if (exit_code != 0) {
-    warning("metilene exited with code ", exit_code)
-
-    # Try without the 2>/dev/null to see errors
-    cmd_debug <- sprintf(
-      "%s -a PseudoA -b PseudoB -m %d -d %f -M %d %s",
-      metilene_path, min_cpg, min_diff, metilene_max_dist, merged_input
-    )
-    system(cmd_debug)
+    warning("metilene exited with code ", exit_code,
+            ". See log: ", log_file)
+    if (file.exists(log_file)) {
+      message(paste(utils::head(readLines(log_file, warn = FALSE), 20),
+                    collapse = "\n"))
+    }
   }
+
+  n_tests <- .metilene_n_tests(log_file)
 
   # Parse metilene output
   empty <- data.table(
@@ -436,7 +583,28 @@ call_dmrs_metilene <- function(split_data,
   if (ncol(dmrs) >= 8) {
     setnames(dmrs, 1:8, c("chr", "start", "end", "q_metilene", "mean_diff",
                           "n_sites", "p_mwu", "p_2dks"))
-    dmrs[, q_bh := p.adjust(p_mwu, method = "BH")]
+
+    # BH over ALL tests metilene performed, not just the rows it emitted.
+    # p.adjust(n =) treats the unreported tests as non-significant, which is the
+    # correct conservative handling: metilene emits its best-scoring segments,
+    # so the withheld tests are less significant than the reported ones.
+    n_emitted <- nrow(dmrs)
+    if (is.na(n_tests)) {
+      warning("call_dmrs_metilene: could not read 'Number of Tests' from ",
+              log_file, "; falling back to BH over the ", n_emitted,
+              " emitted segments only. This UNDER-CORRECTS - metilene ",
+              "typically tests far more segments than it emits.", call. = FALSE)
+      n_bh <- n_emitted
+    } else if (n_tests < n_emitted) {
+      warning("call_dmrs_metilene: metilene reported ", n_tests, " tests but ",
+              "emitted ", n_emitted, " segments; using the emitted count as ",
+              "the BH denominator.", call. = FALSE)
+      n_bh <- n_emitted
+    } else {
+      n_bh <- n_tests
+    }
+    p_vec <- if (p_column == "2dks") dmrs$p_2dks else dmrs$p_mwu
+    dmrs[, q_bh := stats::p.adjust(p_vec, method = "BH", n = n_bh)]
   } else if (ncol(dmrs) >= 6) {
     warning("metilene output has <8 columns; only column-4 q available")
     setnames(dmrs, 1:6, c("chr", "start", "end", "q_metilene", "mean_diff",
@@ -446,17 +614,59 @@ call_dmrs_metilene <- function(split_data,
     return(empty)
   }
 
-  # Significance q-value. Default = metilene's column-4 q (valid genome-wide
-  # correction). "BH" uses the R-recomputed value, valid only with min_diff = 0.
+  # Significance q-value. "BH" is the R-side value corrected over metilene's
+  # full test count; "metilene" is its own column-4 q.
   dmrs[, q_value := if (q_source == "BH") q_bh else q_metilene]
 
   n_total <- nrow(dmrs)
   dmrs <- dmrs[is.finite(q_value) & q_value < q_cutoff]
+  n_sig <- nrow(dmrs)
+
+  # Effect-size filter as its own step, so significance and effect size stay
+  # separable (see the min_diff = 0 + q_source = "BH" workflow above).
+  if (min_effect > 0) {
+    dmrs <- dmrs[is.finite(mean_diff) & abs(mean_diff) >= min_effect]
+  }
+
   dmrs <- dmrs[, .(chr, start, end, q_value, mean_diff, n_sites,
                    p_mwu, q_metilene, q_bh)]
-  message(sprintf("metilene: %d candidate DMRs, %d significant (%s q < %.3g)",
-                  n_total, nrow(dmrs), q_source, q_cutoff))
+  message(sprintf(
+    "metilene: %d candidate DMRs, %d significant (%s q < %.3g)%s",
+    n_total, n_sig, q_source, q_cutoff,
+    if (min_effect > 0)
+      sprintf(", %d after |mean_diff| >= %.3g", nrow(dmrs), min_effect) else ""))
   return(dmrs)
+}
+
+
+#' Read metilene's total test count from its log
+#'
+#' metilene prints `Number of Tests: N` on stderr after segmenting. That N is
+#' the correct denominator for any multiple-testing correction, and it is far
+#' larger than the number of segments metilene emits: on one comparison, 985949
+#' tests against 32162 emitted rows even with `-d 0`. Correcting over only the
+#' emitted rows under-corrects by roughly that ratio.
+#'
+#' @param log_file Path to the captured metilene stderr log.
+#' @return Integer test count, or `NA_integer_` if the log is missing or does
+#'   not contain the line.
+#' @keywords internal
+.metilene_n_tests <- function(log_file) {
+  if (is.null(log_file) || !file.exists(log_file)) return(NA_integer_)
+  txt <- tryCatch(readLines(log_file, warn = FALSE),
+                  error = function(e) character(0))
+  if (!length(txt)) return(NA_integer_)
+
+  hit <- regmatches(
+    txt, regexpr("Number\\s+of\\s+Tests\\s*:\\s*[0-9]+", txt, ignore.case = TRUE))
+  hit <- hit[nzchar(hit)]
+  if (!length(hit)) return(NA_integer_)
+
+  # Take the last occurrence in case metilene reports per-chromosome counts.
+  n <- suppressWarnings(as.numeric(
+    sub(".*:\\s*", "", hit[length(hit)])))
+  if (!is.finite(n) || n < 1) return(NA_integer_)
+  as.integer(n)
 }
 
 

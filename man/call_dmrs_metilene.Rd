@@ -12,7 +12,10 @@ call_dmrs_metilene(
   min_diff = 0.1,
   metilene_max_dist = 1500,
   q_cutoff = 0.05,
-  q_source = c("metilene", "BH")
+  q_source = c("metilene", "BH"),
+  p_column = c("2dks", "mwu"),
+  min_effect = 0,
+  mtc = 1L
 )
 }
 \arguments{
@@ -33,6 +36,29 @@ Set to 1 to keep all candidate DMRs.}
 
 \item{q_source}{Which q-value to filter on: "metilene" (default, column-4 q)
 or "BH" (R-recomputed; only valid with \code{min_diff = 0}).}
+
+\item{p_column}{Which metilene p-value the R-side BH is computed from:
+"2dks" (column 8, 2D Kolmogorov-Smirnov; the default) or "mwu" (column 7,
+Mann-Whitney U). metilene's manual says its q-value corrects the MWU
+p-value, but that is WRONG for de-novo mode: verified by backing the
+denominator out of a Bonferroni run, \code{q / p_2dks} is constant at metilene's
+reported test count while \code{q / p_mwu} varies over ~1200 orders of
+magnitude. Defaulting to "2dks" keeps \code{q_bh} and \code{q_metilene} measuring the
+same underlying statistic, so they differ only by correction method and
+denominator. See \code{inst/scripts/diagnose_metilene_qvalues.R}.}
+
+\item{min_effect}{Minimum \verb{|mean_diff|} required of a DMR, applied in R
+AFTER q-value filtering. Default 0 (no filtering) preserves the historical
+behaviour, where the effect-size cut was done solely by metilene's \code{-d}.
+Set this together with \code{min_diff = 0} and \code{q_source = "BH"} to compute the
+FDR yourself over all tested segments.}
+
+\item{mtc}{Multiple-testing correction metilene applies to its column-4
+q-value, passed through as \code{-c}: 1 = Bonferroni (metilene's default,
+retained here so existing results stay reproducible), 2 = Benjamini-Hochberg
+(FDR). Note that \code{mtc = 2} computes BH over ALL tested segments inside
+metilene, which is NOT the same as - and is statistically preferable to -
+the selection-biased \code{q_source = "BH"} recomputation.}
 }
 \value{
 data.table of significant DMRs with columns: chr, start, end,
@@ -41,14 +67,40 @@ q_value (the chosen one), mean_diff, n_sites, p_mwu, q_metilene, q_bh.
 \description{
 DMRs are kept if their q-value is below \code{q_cutoff}. Two q-values are stored:
 \describe{
-\item{\code{q_metilene} (default)}{metilene's column-4 q-value, which is
-Benjamini-Hochberg corrected over ALL tested segments. Validated against
-the null (gives ~0 false positives where it should) and is the
-statistically valid choice for the standard \code{min_diff > 0} workflow.}
+\item{\code{q_metilene} (default)}{metilene's column-4 q-value, corrected over
+ALL tested segments using the method chosen by \code{mtc}: Bonferroni
+(\code{mtc = 1}, metilene's own default) or Benjamini-Hochberg / FDR
+(\code{mtc = 2}). Because the denominator covers every tested segment rather
+than only the emitted ones, this is the statistically valid choice for
+the standard \code{min_diff > 0} workflow. Validated against the null (gives
+~0 false positives where it should).}
 \item{\code{q_bh}}{Benjamini-Hochberg recomputed in R from metilene's
-Mann-Whitney U p-value (column 7). NOTE: this is ANTI-CONSERVATIVE when
-\code{min_diff > 0}, because the reported DMRs are pre-filtered to
-high-difference candidates (selection bias). It is only valid when
-metilene is run with \code{min_diff = 0} so every tested segment is emitted.}
+Mann-Whitney U p-value (column 7), corrected over the FULL number of
+tests metilene reports (\verb{Number of Tests:} on stderr, read by
+\code{\link[=.metilene_n_tests]{.metilene_n_tests()}}), not over the emitted rows.}
 }
+}
+\details{
+The denominator is the whole problem here. metilene emits far fewer segments
+than it tests - on one comparison, 985949 tests against 32162 emitted rows at
+\verb{-d 0}, and only 568 rows at \verb{-d 0.1}. Running \code{p.adjust()} over the emitted
+rows therefore under-corrects by roughly 30x at \verb{-d 0} and 1700x at
+\verb{-d 0.1}; the latter produced 819 false positives in a true null where the
+column-4 q gave 0.
+
+To compute your own FDR in R rather than relying on metilene's correction:
+
+\if{html}{\out{<div class="sourceCode">}}\preformatted{call_dmrs_metilene(..., min_diff = 0, q_source = "BH", min_effect = 0.1)
+}\if{html}{\out{</div>}}
+
+\code{min_diff} is metilene's \code{-d} (which segments get emitted), while
+\code{min_effect} is an R-side \verb{|mean_diff|} filter applied AFTER q-value
+filtering, so significance and effect size stay separable.
+
+Assumption worth stating in any write-up: supplying \code{p.adjust()} a subset of
+p-values with \verb{n =} the full test count treats the withheld tests as
+non-significant. That is appropriate when the withheld tests are less
+significant than the emitted ones, which is why \code{min_diff = 0} matters - it
+makes the emitted set as complete as metilene will report. Validate against
+the null (a true null should yield ~0 false positives) rather than assuming.
 }

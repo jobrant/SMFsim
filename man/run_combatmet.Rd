@@ -4,15 +4,29 @@
 \alias{run_combatmet}
 \title{Run ComBatMet normalization}
 \usage{
-run_combatmet(pseudo_groups)
+run_combatmet(pseudo_groups, batch = NULL)
 }
 \arguments{
-\item{pseudo_groups}{List from create_pseudo_groups().}
+\item{pseudo_groups}{List from \code{\link[=create_pseudo_groups]{create_pseudo_groups()}}.}
+
+\item{batch}{Optional explicit batch factor, one entry per replicate ordered
+PseudoA then PseudoB. Defaults to the median-efficiency split.}
 }
 \value{
 Named list with method = "ComBatMet" and normalized split data.
 }
 \description{
-ComBatMet uses a ComBat-based approach on methylation beta values.
-This wrapper prepares a matrix, runs ComBat, and converts back.
+Wraps \code{\link[ComBatMet:ComBat_met]{ComBatMet::ComBat_met()}}, the published ComBat-met beta-regression
+batch correction, on the per-site rate matrix.
+}
+\details{
+The biological group is passed as \code{group} with \code{full_mod = TRUE} so it enters
+the model and is PROTECTED; only batch effects are removed. Batch defaults to
+an efficiency stratum from \code{\link[=.efficiency_batch]{.efficiency_batch()}}.
+
+Note: an earlier version of this function hand-rolled a "mean-only"
+adjustment that subtracted each group's own mean and added the grand mean.
+That forces both group means to the grand mean at every site, making the
+group difference identically zero, so no DMR could ever be called. It was
+also not ComBat-met. Both problems are fixed here.
 }

@@ -20,9 +20,12 @@ Imports:
     data.table,
     ggplot2,
     SMFnorm
-Suggests: 
+Suggests:
+    ComBatMet,
     GenomicRanges,
     IRanges,
     S4Vectors,
     testthat (>= 3.0.0)
+Remotes:
+    github::JmWangBio/ComBatMet
 Config/testthat/edition: 3
