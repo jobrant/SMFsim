@@ -11,6 +11,12 @@
 #SBATCH --array=1-15
 #SBATCH --output=logs/%x_%A_%a.out
 #SBATCH --error=logs/%x_%A_%a.err
+#
+# NOTE: these paths are relative to the directory you run `sbatch` FROM, not to
+# $WORKDIR, and SLURM opens them BEFORE this script runs -- so the `mkdir -p
+# logs` below cannot help. Run `mkdir -p logs` in your submit directory first,
+# and submit from the same place every time, or the output silently goes
+# somewhere you are not looking (or is lost).
 
 # One GRID CELL per array task (a within_alpha x between_alpha pair).
 #

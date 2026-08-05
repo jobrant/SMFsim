@@ -10,6 +10,11 @@
 #SBATCH --time=01:00:00
 #SBATCH --output=logs/%x_%j.out
 #SBATCH --error=logs/%x_%j.err
+#
+# NOTE: relative to the SUBMIT directory, not $WORKDIR, and opened before this
+# script runs -- `mkdir -p logs` below is too late to help. Create it in your
+# submit directory first. The separability verdict goes to stdout, so losing
+# this file means losing the main result of the stitch step.
 
 # Stitch the array results together, then report and plot.
 #

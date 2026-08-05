@@ -112,8 +112,17 @@ if (dir.exists(base_output) && !overwrite_ok) {
 }
 dir.create(base_output, recursive = TRUE, showWarnings = FALSE)
 
-# Load source replicates once.
-wt_reps <- prepare_wt_replicates(config)
+# Load source replicates LAZILY, once, and only if some cell actually needs
+# computing. A stitch run over a fully-cached grid then costs seconds instead of
+# reloading every allc file to produce CSVs it already has on disk.
+.wt_cache <- NULL
+get_wt_reps <- function() {
+    if (is.null(.wt_cache)) {
+        message("Loading source replicates ...")
+        .wt_cache <<- prepare_wt_replicates(config)
+    }
+    .wt_cache
+}
 
 # SLURM array support: one CELL per task, indexing rows of GRID.
 task_id    <- Sys.getenv("SLURM_ARRAY_TASK_ID", "")
@@ -159,6 +168,7 @@ for (i in seq_len(nrow(GRID))) {
         null <- fread(c_null)
         spk  <- fread(c_spk)
     } else {
+        wt_reps <- get_wt_reps()
         null <- run_null_simulation(wt_reps, cfg)
         spk  <- run_spikein_simulation(wt_reps, cfg)
     }
