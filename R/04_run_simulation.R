@@ -23,9 +23,12 @@
 # Configuration -----------------------------------------------------------
 
 #' Parse command line arguments or use defaults
+#'
+#' @param args Character vector of `--key value` pairs. Defaults to the process
+#'   command line; pass explicitly to build a config programmatically or to test
+#'   option handling without a subprocess.
 #' @export
-parse_args <- function() {
-  args <- commandArgs(trailingOnly = TRUE)
+parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
 
   # Defaults — adjust these to your local setup
   config <- list(
@@ -75,21 +78,64 @@ parse_args <- function() {
     rate_between_groups = FALSE  # SMFnorm: correct between-group rate differences
   )
 
-  # Override from command line if provided
+  # Override from command line if provided.
+  #
+  # Keys are typed explicitly. Anything not listed here used to fall through to
+  # a raw character assignment, so `--within_alpha 0.5` silently produced the
+  # STRING "0.5" and then blew up as "non-numeric argument to binary operator"
+  # deep inside SMFnorm -- potentially hours into a multi-day run. Unknown keys
+  # were also silently ignored, so a typo ran the job at defaults.
+  int_keys  <- c("seed", "n_spikein_regions", "region_width_bp",
+                 "metilene_min_cpg", "metilene_max_dist", "min_coverage",
+                 "metilene_mtc", "min_sites", "max_median_spacing")
+  num_keys  <- c("metilene_min_diff", "dispersion_s", "metilene_qval",
+                 "within_alpha", "between_alpha", "metilene_min_effect")
+  flag_keys <- c("rate_between_groups", "standard_chr_only")
+  csv_keys  <- c("scenarios", "methods")
+  numvec_keys <- c("effect_sizes")
+
+  .as_flag <- function(x, key) {
+    v <- tolower(x)
+    if (v %in% c("true", "t", "yes", "1")) return(TRUE)
+    if (v %in% c("false", "f", "no", "0")) return(FALSE)
+    stop(sprintf("parse_args: --%s expects true/false, got '%s'.", key, x),
+         call. = FALSE)
+  }
+  .as_num <- function(x, key, integer = FALSE) {
+    v <- suppressWarnings(if (integer) as.integer(x) else as.numeric(x))
+    if (length(v) != 1L || is.na(v)) {
+      stop(sprintf("parse_args: --%s expects a %s, got '%s'.",
+                   key, if (integer) "whole number" else "number", x),
+           call. = FALSE)
+    }
+    v
+  }
+
   i <- 1
   while (i <= length(args)) {
     key <- sub("^--", "", args[i])
-    if (key %in% c("scenarios", "methods")) {
-      config[[key]] <- strsplit(args[i + 1], ",")[[1]]
-    } else if (key %in% c("seed", "n_spikein_regions", "region_width_bp",
-                           "metilene_min_cpg", "metilene_max_dist")) {
-      config[[key]] <- as.integer(args[i + 1])
-    } else if (key %in% c("metilene_min_diff", "dispersion_s", "metilene_qval")) {
-      config[[key]] <- as.numeric(args[i + 1])
-    } else if (key %in% c("effect_sizes")) {
-      config[[key]] <- as.numeric(strsplit(args[i + 1], ",")[[1]])
+    if (i + 1 > length(args)) {
+      stop(sprintf("parse_args: --%s given with no value.", key), call. = FALSE)
+    }
+    val <- args[i + 1]
+
+    if (key %in% csv_keys) {
+      config[[key]] <- strsplit(val, ",")[[1]]
+    } else if (key %in% numvec_keys) {
+      config[[key]] <- vapply(strsplit(val, ",")[[1]], .as_num, numeric(1),
+                              key = key, USE.NAMES = FALSE)
+    } else if (key %in% int_keys) {
+      config[[key]] <- .as_num(val, key, integer = TRUE)
+    } else if (key %in% num_keys) {
+      config[[key]] <- .as_num(val, key)
+    } else if (key %in% flag_keys) {
+      config[[key]] <- .as_flag(val, key)
     } else if (key %in% names(config)) {
-      config[[key]] <- args[i + 1]
+      config[[key]] <- val
+    } else {
+      stop(sprintf(paste0("parse_args: unknown option --%s. Valid options:\n  %s"),
+                   key, paste(sort(names(config)), collapse = ", ")),
+           call. = FALSE)
     }
     i <- i + 2
   }

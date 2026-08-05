@@ -20,7 +20,14 @@ ARRAY_JOB=$(sbatch --parsable inst/slurm/alpha_sweep_array.sbatch)
 
 # 3. Stitch + plots + separability report, after every cell succeeds.
 sbatch --dependency=afterok:$ARRAY_JOB inst/slurm/alpha_sweep_stitch.sbatch
+
+# 4. Lock the alphas from step 3, set them in the file, then the headline run.
+sbatch inst/slurm/bias_experiment.sbatch
 ```
+
+Step 4 refuses to start until `WITHIN_ALPHA` / `BETWEEN_ALPHA` are set to real
+values, and pre-flights every package (including ComBatMet) before committing
+to a multi-day job.
 
 ## Array size must match the grid
 

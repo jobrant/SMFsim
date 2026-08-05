@@ -4,7 +4,12 @@
 \alias{parse_args}
 \title{Parse command line arguments or use defaults}
 \usage{
-parse_args()
+parse_args(args = commandArgs(trailingOnly = TRUE))
+}
+\arguments{
+\item{args}{Character vector of \verb{--key value} pairs. Defaults to the process
+command line; pass explicitly to build a config programmatically or to test
+option handling without a subprocess.}
 }
 \description{
 Parse command line arguments or use defaults
