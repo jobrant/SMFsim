@@ -192,8 +192,8 @@ run_downsampled <- function(pseudo_groups) {
 #'   leave FALSE for the matched-mean within-group scenarios.
 #' @return Named list with method = "SMFnorm" and normalized split data.
 run_SMFnorm <- function(pseudo_groups,
-                        within_alpha = 0.3,
-                        between_alpha = 0.9,
+                        within_alpha = 0.5,
+                        between_alpha = 1.0,
                         min_coverage = 10,
                         rate_between_groups = FALSE) {
   message(sprintf("Method: SMFnorm (rate_between_groups = %s)",
@@ -711,16 +711,27 @@ call_dmrs_metilene <- function(split_data,
 
 #' Run all normalization methods on pseudo-group data
 #'
+#' Every requested method must produce a result. If any does not, this errors
+#' rather than returning a partial list: downstream code iterates over
+#' `names()` of the result, so a dropped arm is indistinguishable from one that
+#' was never requested and its row is simply missing from the FP and metrics
+#' tables -- which reads as if the method had scored zero. Set the environment
+#' variable `SMFSIM_ALLOW_METHOD_FAILURE=1` to downgrade the error to a
+#' warning and accept a partial result.
+#'
 #' @param pseudo_groups List from create_pseudo_groups().
 #' @param methods Character vector of methods to run.
 #'   Options: "raw", "downsampled", "SMFnorm", "ComBatMet"
 #' @param SMFnorm_params Named list of SMFnorm parameters.
-#' @return Named list of results, each with $method and $data.
+#' @return Named list of results, each with `$method` and `$data`, with one
+#'   element per entry of `methods`. Carries a `"method_failures"` attribute: a
+#'   named character vector of per-method error messages, empty when all
+#'   methods succeeded.
 run_all_methods <- function(pseudo_groups,
                             methods = c("raw", "downsampled", "SMFnorm", "ComBatMet"),
                             SMFnorm_params = list(
-                              within_alpha = 0.3,
-                              between_alpha = 0.9,
+                              within_alpha = 0.5,
+                              between_alpha = 1.0,
                               min_coverage = 10
                             )) {
   # NOTE: min_coverage is applied upstream at load time (prepare_wt_replicates /
@@ -732,19 +743,25 @@ run_all_methods <- function(pseudo_groups,
          call. = FALSE)
   }
 
-  results <- list()
+  results  <- list()
+  failures <- character(0)
 
   for (m in methods) {
     message(sprintf("\n=== Running method: %s ===", m))
     t0 <- Sys.time()
-    
+
     # Deep copy so each method gets fresh data
     pseudo_copy <- list(
       PseudoA = lapply(pseudo_groups$PseudoA, data.table::copy),
       PseudoB = lapply(pseudo_groups$PseudoB, data.table::copy),
       params = pseudo_groups$params
     )
-    
+
+    # Capture the error text rather than only warning() with it. Under Rscript
+    # warning() is deferred to the end of the log, and if the run ends with
+    # "There were N warnings (use warnings() to see them)" the reason is lost
+    # for good -- which is what happened to the 2026-09-02 headline run.
+    err <- NULL
     result <- tryCatch({
       switch(m,
              raw = run_raw(pseudo_copy),
@@ -755,24 +772,61 @@ run_all_methods <- function(pseudo_groups,
              stop("Unknown method: ", m)
       )
     }, error = function(e) {
-      warning(sprintf("Method '%s' failed: %s", m, e$message))
-      return(NULL)
+      err <<- conditionMessage(e)
+      NULL
     })
-    
+
     elapsed <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
-    message(sprintf("Method %s completed in %.1f seconds", m, elapsed))
-    
-    if (!is.null(result)) {
+
+    if (is.null(result)) {
+      # Do NOT report a failed method as "completed". The old message printed
+      # before the is.null() guard, so a method that errored still logged
+      # "Method SMFnorm completed in 9.5 seconds" and was then dropped.
+      if (is.null(err)) err <- "returned NULL without signalling an error"
+      failures[[m]] <- err
+      message(sprintf("Method %s FAILED after %.1f seconds: %s",
+                      m, elapsed, err))
+    } else {
+      message(sprintf("Method %s completed in %.1f seconds", m, elapsed))
       result$elapsed_seconds <- elapsed
       results[[m]] <- result
     }
   }
 
-  if (length(results) == 0L) {
-    stop(sprintf("run_all_methods: every requested method failed (%s) - no ",
-                 "results to return. See warnings() for the per-method error(s).",
-                 paste(methods, collapse = ", ")), call. = FALSE)
+  # --- Completeness backstop ----------------------------------------------
+  # A silently missing arm is far more expensive than a crash. Downstream, a
+  # dropped method is indistinguishable from one that was never requested: its
+  # row is simply absent from the FP/metrics table, which reads as if it had
+  # scored zero. That is how a multi-day benchmark completed "successfully"
+  # with SMFnorm -- the method the paper is about -- absent from every block.
+  #
+  # The trade-off is real: this turns a transient single-method failure into a
+  # dead run. SMFSIM_ALLOW_METHOD_FAILURE=1 downgrades it to a warning for the
+  # cases where a partial result is genuinely wanted (e.g. ComBatMet on a
+  # machine where it is not installed). Use it deliberately, and never when
+  # generating figures -- the arm will be missing, not zero.
+  missing <- setdiff(methods, names(results))
+  if (length(missing)) {
+    detail <- paste(sprintf("  - %s: %s", missing, failures[missing]),
+                    collapse = "\n")
+    msg <- sprintf(paste0(
+      "run_all_methods: %d of %d requested method(s) produced no results.\n%s\n",
+      "These arms are ABSENT from the output, not zero. Do not plot or ",
+      "tabulate this run as a method comparison."),
+      length(missing), length(methods), detail)
+
+    if (identical(Sys.getenv("SMFSIM_ALLOW_METHOD_FAILURE"), "1")) {
+      message("\n!! ", msg)
+      message("!! Continuing anyway: SMFSIM_ALLOW_METHOD_FAILURE=1.")
+      warning(msg, call. = FALSE)
+    } else {
+      stop(sprintf(paste0(
+        "%s\nTo proceed with a partial result anyway, re-run with ",
+        "SMFSIM_ALLOW_METHOD_FAILURE=1."), msg), call. = FALSE)
+    }
   }
+
+  attr(results, "method_failures") <- failures
 
   return(results)
 }

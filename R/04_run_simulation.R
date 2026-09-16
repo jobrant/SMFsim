@@ -70,8 +70,8 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
     metilene_mtc      = 2,   # metilene -c: 1 = Bonferroni, 2 = BH/FDR. Only affects
                              # the stored q_metilene column; set to 2 so it differs
                              # from q_bh by DENOMINATOR alone, as a cross-check.
-    within_alpha = 0.3,
-    between_alpha = 0.9,
+    within_alpha = 0.5,
+    between_alpha = 1.0,
     min_coverage = 10,
     dispersion_s = Inf,    # Beta precision for overdispersion; Inf = pure binomial
     sim_mode = "parametric",    # pseudo-group construction: "clone" or "parametric"
@@ -267,7 +267,8 @@ run_null_simulation <- function(wt_reps, config) {
       efficiency_B = sc$efficiency_B,
       mode = config$sim_mode %||% "clone",
       seed = config$seed,
-      dispersion_s = config$dispersion_s
+      dispersion_s = config$dispersion_s,
+      matched_means = isTRUE(sc$matched_means)
     )
 
     # Run all normalization methods
@@ -388,7 +389,27 @@ run_spikein_simulation <- function(wt_reps, config) {
       set.seed(config$seed)
       eff_A <- .resolve_efficiencies(sc$efficiency_A, n_reps, "A")
       eff_B <- .resolve_efficiencies(sc$efficiency_B, n_reps, "B")
-      
+
+      # This layer builds `pseudo` by hand rather than via
+      # create_pseudo_groups(), so repeat its matched-mean guard here. See that
+      # function for why a declared matched-mean scenario must stay matched.
+      eff_diff <- abs(mean(eff_A) - mean(eff_B))
+      if (isTRUE(sc$matched_means) && eff_diff > 1e-8) {
+        stop(sprintf(
+          paste0("run_spikein_simulation: scenario '%s' declares ",
+                 "matched_means = TRUE, but the realized efficiencies give a ",
+                 "between-group mean difference of %.4f.\n",
+                 "  A: %s  (mean %.4f)\n",
+                 "  B: %s  (mean %.4f)\n",
+                 "Rebalance the two vectors in get_efficiency_scenarios(), or ",
+                 "supply explicit length-%d vectors for both groups."),
+          sc_name, eff_diff,
+          paste(round(eff_A, 4), collapse = ", "), mean(eff_A),
+          paste(round(eff_B, 4), collapse = ", "), mean(eff_B),
+          n_reps), call. = FALSE)
+      }
+
+
       if (sim_mode == "parametric") {
         # Parametric: inject the effect into the pooled TRUE rate for group B,
         # then draw both groups independently from their respective rates.

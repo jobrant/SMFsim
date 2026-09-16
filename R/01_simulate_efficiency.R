@@ -138,11 +138,22 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL, dispersion_s = NULL
 #' Handles explicit per-replicate vectors and min/max ranges (uniform
 #' sampling). An explicit vector whose length does not match `n_reps` is
 #' recycled to `n_reps` (e.g. a length-3 scenario applied to a 4-replicate
-#' group), preserving the values and spread approximately. A length-2 input is
+#' group) and then re-centred on the authored mean. A length-2 input is
 #' always treated as a range unless `n_reps == 2`.
 #'
+#' The re-centring is not cosmetic. `rep_len()` duplicates the FIRST elements
+#' of the vector, which shifts the group mean by an amount that depends on
+#' which values happen to be listed first. In the within-group scenarios --
+#' whose defining property is that the two groups have MATCHED means and
+#' therefore contain no between-group artifact -- that silently injected a
+#' between-group efficiency difference. On the 4-replicate M-series, `severe`
+#' acquired a 0.075 difference with the sign REVERSED relative to the authored
+#' design, which is the artifact the "true null" calibration was then measuring.
+#' Re-centring makes the realized mean equal the authored mean for any
+#' `n_reps`, so a matched-mean scenario stays matched.
+#'
 #' @param eff Numeric vector: length n_reps (explicit), length 2 (range), or any
-#'   other length (recycled to n_reps).
+#'   other length (recycled to n_reps and re-centred).
 #' @param n_reps Number of replicates.
 #' @param label Group label for messages.
 #' @return Numeric vector of length n_reps.
@@ -159,11 +170,29 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL, dispersion_s = NULL
                     label, n_reps, eff[1], eff[2]))
     return(runif(n_reps, min = eff[1], max = eff[2]))
   } else {
-    # Recycle an explicit vector to the actual replicate count.
+    # Recycle an explicit vector to the actual replicate count, then restore
+    # the authored mean (see the note in the description).
+    target_mean <- mean(eff)
+    out <- rep_len(eff, n_reps)
+    out <- out - mean(out) + target_mean
+
+    clamped <- pmin(pmax(out, 0.01), 1)
+    if (!isTRUE(all.equal(clamped, out))) {
+      warning(sprintf(
+        paste0("Group %s: re-centring %d efficiencies onto %d replicates ",
+               "pushed values outside (0, 1]; they were clamped and the ",
+               "realized mean (%.4f) no longer equals the authored mean ",
+               "(%.4f). Supply an explicit length-%d vector instead."),
+        label, length(eff), n_reps, mean(clamped), target_mean, n_reps),
+        call. = FALSE)
+      out <- clamped
+    }
+
     message(sprintf(
-      "Group %s: recycling %d explicit efficiencies to %d replicates",
-      label, length(eff), n_reps))
-    return(rep_len(eff, n_reps))
+      paste0("Group %s: recycling %d explicit efficiencies to %d replicates ",
+             "(re-centred on authored mean %.4f)"),
+      label, length(eff), n_reps, target_mean))
+    return(out)
   }
 }
 
@@ -228,6 +257,15 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL, dispersion_s = NULL
 #' @param dispersion_s Optional Beta precision for beta-binomial overdispersion,
 #'   passed to [simulate_efficiency()]. `NULL`/`Inf` (default) = pure binomial.
 #'   In "parametric" mode this is the primary noise knob (e.g. ~26 for M-series).
+#' @param matched_means Logical. Declare that this scenario is designed to have
+#'   EQUAL group mean efficiencies, i.e. it contains no between-group artifact
+#'   and every call against it is a false positive. When `TRUE`, a realized
+#'   between-group mean difference above 1e-8 is an error rather than a
+#'   warning: a matched-mean scenario that has drifted is no longer a true
+#'   null, and false positives measured against it partly reflect the drift
+#'   instead of the method. Set from the scenario definition's
+#'   `matched_means` field (see [get_efficiency_scenarios()]), not inferred
+#'   from the values.
 #' @return List with elements:
 #'   \item{PseudoA}{Named list of distorted data.tables}
 #'   \item{PseudoB}{Named list of distorted data.tables}
@@ -237,7 +275,8 @@ create_pseudo_groups <- function(replicates,
                                  efficiency_B = c(0.90, 0.65, 0.80),
                                  mode = c("clone", "split", "parametric"),
                                  seed = 42,
-                                 dispersion_s = NULL) {
+                                 dispersion_s = NULL,
+                                 matched_means = FALSE) {
   mode <- match.arg(mode)
   stopifnot(is.list(replicates), length(replicates) >= 2)
   
@@ -351,8 +390,37 @@ create_pseudo_groups <- function(replicates,
                     paste(round(eff_vals_A, 3), collapse = ", ")))
     message(sprintf("PseudoB efficiencies: %s",
                     paste(round(eff_vals_B, 3), collapse = ", ")))
-    message(sprintf("Between-group mean efficiency difference: %.3f",
-                    abs(mean(eff_vals_A) - mean(eff_vals_B))))
+    realized_diff <- abs(mean(eff_vals_A) - mean(eff_vals_B))
+    message(sprintf("Between-group mean efficiency difference: %.4f",
+                    realized_diff))
+
+    # A scenario that DECLARES matched_means = TRUE must realize matched means.
+    # The declaration comes from the scenario definition, not from inspecting
+    # the numbers: inferring intent from the values would disable the check in
+    # exactly the case that needs it -- someone editing one group's vector and
+    # breaking the match. Two ways it can break: an explicit vector recycled to
+    # a different replicate count, or an edit to one group only. Either silently
+    # turns a "true null" into a scenario containing a real between-group
+    # artifact, and every method's false positives then partly measure that
+    # artifact rather than the method.
+    if (isTRUE(matched_means) && realized_diff > 1e-8) {
+        stop(sprintf(
+            paste0("create_pseudo_groups: this scenario declares ",
+                   "matched_means = TRUE, but the realized per-replicate ",
+                   "efficiencies give a between-group mean difference of ",
+                   "%.4f.\n",
+                   "  A: %s  (mean %.4f; authored mean %.4f)\n",
+                   "  B: %s  (mean %.4f; authored mean %.4f)\n",
+                   "A matched-mean scenario must stay matched, or its false ",
+                   "positives are not false. Rebalance the two vectors, or ",
+                   "supply explicit length-%d vectors for both groups."),
+            realized_diff,
+            paste(round(eff_vals_A, 4), collapse = ", "), mean(eff_vals_A),
+            mean(efficiency_A),
+            paste(round(eff_vals_B, 4), collapse = ", "), mean(eff_vals_B),
+            mean(efficiency_B),
+            n_reps), call. = FALSE)
+    }
 
     # Both groups drawn independently from the SAME pooled true rate (null
     # biology); independent seeds mean no shared noise to cancel.
@@ -859,26 +927,36 @@ inject_spikein_parametric <- function(ref_dt, p, regions,
 #'   length-2 `[min, max]` ranges for between-group bias scenarios).
 get_efficiency_scenarios <- function() {
   list(
+    # Within-group scenarios: the group means are EXACTLY equal, so there is no
+    # between-group efficiency artifact for any method to legitimately detect.
+    # That equality is the whole point of these scenarios -- it is what makes
+    # every call a false positive -- so do not edit one group's values without
+    # rebalancing the other. Each vector is length 4 to match the M-series
+    # (M1 has 4 replicates); on a 3-replicate dataset .resolve_efficiencies()
+    # recycles and re-centres, preserving the mean.
     mild = list(
-      label = "Mild within-group variation (sd ~ 0.04)",
-      # Group A: mean ~ 0.90, range 0.85-0.95
-      efficiency_A = c(0.95, 0.88, 0.87),
-      # Group B: mean ~ 0.90, range 0.86-0.93
-      efficiency_B = c(0.86, 0.93, 0.90)
+      label = "Mild within-group variation (sd ~ 0.03)",
+      # Group A: mean 0.9000, sd 0.036, range 0.87-0.95
+      efficiency_A = c(0.95, 0.88, 0.87, 0.90),
+      # Group B: mean 0.9000, sd 0.029, range 0.86-0.93
+      efficiency_B = c(0.86, 0.93, 0.90, 0.91),
+      matched_means = TRUE
     ),
     moderate = list(
-      label = "Moderate within-group variation (sd ~ 0.10)",
-      # Group A: mean ~ 0.83, range 0.70-0.95
-      efficiency_A = c(0.95, 0.70, 0.85),
-      # Group B: mean ~ 0.83, range 0.65-0.95
-      efficiency_B = c(0.90, 0.65, 0.95)
+      label = "Moderate within-group variation (sd ~ 0.12)",
+      # Group A: mean 0.8400, sd 0.104, range 0.70-0.95
+      efficiency_A = c(0.95, 0.70, 0.85, 0.86),
+      # Group B: mean 0.8400, sd 0.132, range 0.65-0.95
+      efficiency_B = c(0.90, 0.65, 0.95, 0.86),
+      matched_means = TRUE
     ),
     severe = list(
       label = "Severe within-group variation (sd ~ 0.17)",
-      # Group A: mean ~ 0.75, range 0.55-0.95
-      efficiency_A = c(0.55, 0.95, 0.75),
-      # Group B: mean ~ 0.73, range 0.50-0.90
-      efficiency_B = c(0.90, 0.50, 0.80)
+      # Group A: mean 0.7400, sd 0.165, range 0.55-0.95
+      efficiency_A = c(0.55, 0.95, 0.75, 0.71),
+      # Group B: mean 0.7400, sd 0.170, range 0.50-0.90
+      efficiency_B = c(0.90, 0.50, 0.80, 0.76),
+      matched_means = TRUE
     ),
 
     # --- Between-group bias: aligned (clean batch, non-overlapping ranges) ---
