@@ -7,7 +7,7 @@
 run_all_methods(
   pseudo_groups,
   methods = c("raw", "downsampled", "SMFnorm", "ComBatMet"),
-  SMFnorm_params = list(within_alpha = 0.3, between_alpha = 0.9, min_coverage = 10)
+  SMFnorm_params = list(within_alpha = 0.5, between_alpha = 1, min_coverage = 10)
 )
 }
 \arguments{
@@ -19,8 +19,17 @@ Options: "raw", "downsampled", "SMFnorm", "ComBatMet"}
 \item{SMFnorm_params}{Named list of SMFnorm parameters.}
 }
 \value{
-Named list of results, each with $method and $data.
+Named list of results, each with \verb{$method} and \verb{$data}, with one
+element per entry of \code{methods}. Carries a \code{"method_failures"} attribute: a
+named character vector of per-method error messages, empty when all
+methods succeeded.
 }
 \description{
-Run all normalization methods on pseudo-group data
+Every requested method must produce a result. If any does not, this errors
+rather than returning a partial list: downstream code iterates over
+\code{names()} of the result, so a dropped arm is indistinguishable from one that
+was never requested and its row is simply missing from the FP and metrics
+tables -- which reads as if the method had scored zero. Set the environment
+variable \code{SMFSIM_ALLOW_METHOD_FAILURE=1} to downgrade the error to a
+warning and accept a partial result.
 }

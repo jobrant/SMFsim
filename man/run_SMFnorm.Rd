@@ -6,8 +6,8 @@
 \usage{
 run_SMFnorm(
   pseudo_groups,
-  within_alpha = 0.3,
-  between_alpha = 0.9,
+  within_alpha = 0.5,
+  between_alpha = 1,
   min_coverage = 10,
   rate_between_groups = FALSE
 )

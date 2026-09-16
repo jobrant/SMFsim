@@ -1,0 +1,7 @@
+ERROR: WITHIN_ALPHA / BETWEEN_ALPHA are still UNSET.
+Set them to the values locked from the stitched alpha grid
+(see the 'Separability of the two alphas' block in the stitch log).
+
+Running at the parse_args defaults would silently produce results at
+parameters you did not choose - which is exactly how the June figures
+ended up superseded.

@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=smfsim_alpha_stitch
-#SBATCH --account=EDIT_ME_ACCOUNT          # <-- EDIT ME
-#SBATCH --qos=EDIT_ME_QOS                  # <-- EDIT ME
+#SBATCH --account=jobrant         # <-- EDIT ME
+#SBATCH --qos=jobrant-b                  # <-- EDIT ME
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=jobrant@ufl.edu
+#SBATCH --mail-user=shenxinyu@ufl.edu
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
 #SBATCH --mem=16gb
@@ -34,15 +34,13 @@
 
 set -euo pipefail
 
-WORKDIR=EDIT_ME_PATH_TO_SMFsim             # <-- EDIT ME (package root)
-module load EDIT_ME_R_MODULE               # <-- EDIT ME, e.g. R/4.4
+module load R/4.5               # <-- EDIT ME, e.g. R/4.4
 
-cd "$WORKDIR"
 mkdir -p logs
 
 # Guard against stitching an incomplete grid. Expected cell count must match
 # the --array range used for the sweep.
-EXPECTED_CELLS=15
+EXPECTED_CELLS=12
 SWEEP_DIR=results/alpha_sweep_fast          # results/alpha_sweep if FAST_TUNE=FALSE
 
 if [ -d "$SWEEP_DIR" ]; then
@@ -60,7 +58,7 @@ fi
 
 echo "started     : $(date)"
 
-Rscript inst/scripts/run_alpha_sweep.R
+Rscript SMFsim/inst/scripts/run_alpha_sweep.R
 
 echo "finished    : $(date)"
 echo

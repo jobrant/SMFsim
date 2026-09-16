@@ -97,7 +97,19 @@ align_replicates <- function(reps, key = c("chr", "pos")) {
 
 # Fit an efficiency vector to n replicates (scenarios are length-3; a source
 # group may have a different rep count, e.g. M1 has 4).
-.fit_eff <- function(eff, n) if (length(eff) == n) eff else rep_len(eff, n)
+# Delegate to the package's resolver rather than calling rep_len() directly.
+# A private rep_len() copy duplicates the FIRST elements of the vector, which
+# shifts the group mean by an amount that depends on which values happen to be
+# listed first -- on the 4-replicate M-series that injected a 0.075
+# between-group efficiency difference into `severe`, a scenario whose whole
+# point is that the group means MATCH. .resolve_efficiencies() re-centres on
+# the authored mean, so the between-group contrast reported below reflects the
+# scenario as designed.
+#
+# Note this affects the section-2 cross-check table only. The calibrated
+# precision s reported in section 1 is estimated directly from the real
+# replicates and does not involve the scenarios at all.
+.fit_eff <- function(eff, n) .resolve_efficiencies(eff, n, "sim")
 
 
 # --- Matrix helpers ------------------------------------------------------

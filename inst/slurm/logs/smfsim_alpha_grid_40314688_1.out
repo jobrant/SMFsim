@@ -1,0 +1,6 @@
+host        : c0712a-s12.ufhpc
+array job   : 40314688
+array task  : 1
+workdir     : /orange/jobrant/yuki/smfnorm-sim-manuscript/SMFsim/inst/slurm
+started     : Wed Aug 26 03:51:11 PM EDT 2026
+Fatal error: cannot open file 'SMFsim/inst/scripts/run_alpha_sweep.R': No such file or directory

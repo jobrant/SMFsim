@@ -8,7 +8,7 @@
 }
 \arguments{
 \item{eff}{Numeric vector: length n_reps (explicit), length 2 (range), or any
-other length (recycled to n_reps).}
+other length (recycled to n_reps and re-centred).}
 
 \item{n_reps}{Number of replicates.}
 
@@ -21,7 +21,19 @@ Numeric vector of length n_reps.
 Handles explicit per-replicate vectors and min/max ranges (uniform
 sampling). An explicit vector whose length does not match \code{n_reps} is
 recycled to \code{n_reps} (e.g. a length-3 scenario applied to a 4-replicate
-group), preserving the values and spread approximately. A length-2 input is
+group) and then re-centred on the authored mean. A length-2 input is
 always treated as a range unless \code{n_reps == 2}.
+}
+\details{
+The re-centring is not cosmetic. \code{rep_len()} duplicates the FIRST elements
+of the vector, which shifts the group mean by an amount that depends on
+which values happen to be listed first. In the within-group scenarios --
+whose defining property is that the two groups have MATCHED means and
+therefore contain no between-group artifact -- that silently injected a
+between-group efficiency difference. On the 4-replicate M-series, \code{severe}
+acquired a 0.075 difference with the sign REVERSED relative to the authored
+design, which is the artifact the "true null" calibration was then measuring.
+Re-centring makes the realized mean equal the authored mean for any
+\code{n_reps}, so a matched-mean scenario stays matched.
 }
 \keyword{internal}

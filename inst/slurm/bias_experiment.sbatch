@@ -1,9 +1,9 @@
 #!/bin/bash
 #SBATCH --job-name=smfsim_bias
-#SBATCH --account=EDIT_ME_ACCOUNT          # <-- EDIT ME
-#SBATCH --qos=EDIT_ME_QOS                  # <-- EDIT ME
+#SBATCH --account=jobrant          # <-- EDIT ME
+#SBATCH --qos=jobrant-b                  # <-- EDIT ME
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=jobrant@ufl.edu
+#SBATCH --mail-user=shenxinyu@ufl.edu
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=4
 #SBATCH --mem=64gb
@@ -37,12 +37,12 @@
 set -euo pipefail
 
 # === EDIT ME =============================================================
-WORKDIR=EDIT_ME_PATH_TO_SMFsim             # package root
-R_MODULE=EDIT_ME_R_MODULE                  # e.g. R/4.4
+WORKDIR=/orange/jobrant/yuki/smfnorm-sim-manuscript/SMFsim             # package root
+R_MODULE=R/4.5                  # e.g. R/4.4
 
 # The LOCKED alphas from the stitched grid. Leave as UNSET to abort.
-WITHIN_ALPHA=UNSET
-BETWEEN_ALPHA=UNSET
+# WITHIN_ALPHA=0.5
+# BETWEEN_ALPHA=0.95
 # =========================================================================
 
 # --- Refuse to burn 4 days at the wrong parameters -----------------------
@@ -58,7 +58,7 @@ if [ "$WITHIN_ALPHA" = "UNSET" ] || [ "$BETWEEN_ALPHA" = "UNSET" ]; then
 fi
 
 module load "$R_MODULE"
-cd "$WORKDIR"
+#cd "$WORKDIR"
 mkdir -p logs
 
 echo "host          : $(hostname)"
@@ -94,7 +94,7 @@ fi
 
 echo
 echo "=== running ==="
-Rscript inst/scripts/run_bias_experiment.R \
+Rscript SMFsim/inst/scripts/run_bias_experiment.R \
     --within_alpha  "$WITHIN_ALPHA" \
     --between_alpha "$BETWEEN_ALPHA"
 

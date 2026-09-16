@@ -1,15 +1,15 @@
 #!/bin/bash
 #SBATCH --job-name=smfsim_null_cal
-#SBATCH --account=EDIT_ME_ACCOUNT          # <-- EDIT ME
-#SBATCH --qos=EDIT_ME_QOS                  # <-- EDIT ME
+#SBATCH --account=jobrant         # <-- EDIT ME
+#SBATCH --qos=jobrant-b              # <-- EDIT ME
 #SBATCH --mail-type=END,FAIL
-#SBATCH --mail-user=jobrant@ufl.edu
+#SBATCH --mail-user=shenxinyu@ufl.edu,jobrant@ufl.edu 
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=2
-#SBATCH --mem=48gb
+#SBATCH --mem=64gb
 #SBATCH --time=12:00:00
-#SBATCH --output=logs/%x_%j.out
-#SBATCH --error=logs/%x_%j.err
+#SBATCH --output=LOGS/%x_%j.out
+#SBATCH --error=LOGS/%x_%j.err
 
 # Calibration gate. Run this BEFORE the alpha grid.
 #
@@ -22,19 +22,16 @@
 # set FAST_MODE <- FALSE and resubmit for the genome-wide answer. The 12 h wall
 # time is sized for the genome-wide run; chr1 finishes in well under an hour.
 
+mkdir LOGS
 set -euo pipefail
 
-WORKDIR=EDIT_ME_PATH_TO_SMFsim             # <-- EDIT ME (package root)
-module load EDIT_ME_R_MODULE               # <-- EDIT ME, e.g. R/4.4
-
-cd "$WORKDIR"
-mkdir -p logs
+module load R/4.5               # <-- EDIT ME, e.g. R/4.4
 
 echo "host        : $(hostname)"
 echo "workdir     : $(pwd)"
 echo "started     : $(date)"
 
-Rscript inst/scripts/validate_null_calibration.R
+Rscript /orange/jobrant/yuki/smfnorm-sim-manuscript/SMFsim/inst/scripts/validate_null_calibration.R
 
 echo "finished    : $(date)"
 echo

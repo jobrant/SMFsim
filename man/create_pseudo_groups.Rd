@@ -10,7 +10,8 @@ create_pseudo_groups(
   efficiency_B = c(0.9, 0.65, 0.8),
   mode = c("clone", "split", "parametric"),
   seed = 42,
-  dispersion_s = NULL
+  dispersion_s = NULL,
+  matched_means = FALSE
 )
 }
 \arguments{
@@ -28,6 +29,16 @@ Can be length n_reps (explicit per-replicate) or length 2 (min/max range).}
 \item{dispersion_s}{Optional Beta precision for beta-binomial overdispersion,
 passed to \code{\link[=simulate_efficiency]{simulate_efficiency()}}. \code{NULL}/\code{Inf} (default) = pure binomial.
 In "parametric" mode this is the primary noise knob (e.g. ~26 for M-series).}
+
+\item{matched_means}{Logical. Declare that this scenario is designed to have
+EQUAL group mean efficiencies, i.e. it contains no between-group artifact
+and every call against it is a false positive. When \code{TRUE}, a realized
+between-group mean difference above 1e-8 is an error rather than a
+warning: a matched-mean scenario that has drifted is no longer a true
+null, and false positives measured against it partly reflect the drift
+instead of the method. Set from the scenario definition's
+\code{matched_means} field (see \code{\link[=get_efficiency_scenarios]{get_efficiency_scenarios()}}), not inferred
+from the values.}
 }
 \value{
 List with elements:

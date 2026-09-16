@@ -1,0 +1,21 @@
+ℹ Loading SMFsim
+Warning messages:
+1: replacing previous import ‘data.table::transpose’ by ‘purrr::transpose’ when loading ‘SMFnorm’ 
+2: replacing previous import ‘data.table::dcast’ by ‘reshape2::dcast’ when loading ‘SMFnorm’ 
+FAST_TUNE on: chr1 only, 100 regions, output -> results/alpha_sweep_fast
+Grid: 5 within x 3 between = 15 cells
+
+################################################################
+# cell 1/15: within_alpha = 0.10, between_alpha = 0.50
+################################################################
+Loading source replicates ...
+
+============================================================
+STEP 0: Loading and preparing WT replicates
+============================================================
+Applying min_coverage = 10 at load time
+Loading sample sheet from: ../m-series-data/data/sample_sheet.csv
+Error in data.table::fread(sample_sheet) : 
+  File '../m-series-data/data/sample_sheet.csv' does not exist or is non-readable. getwd()=='/orange/jobrant/yuki/smfnorm-sim-manuscript/SMFsim'
+Calls: get_wt_reps ... .load_sample_sheet -> <Anonymous> -> stopf -> raise_condition -> signal
+Execution halted

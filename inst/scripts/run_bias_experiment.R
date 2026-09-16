@@ -21,7 +21,7 @@
 # Calibration (s = 26, parametric mode) comes from inst/scripts/diagnose_variance.R.
 
 # --- Load package --------------------------------------------------------
-if (requireNamespace("devtools", quietly = TRUE) && file.exists("DESCRIPTION")) {
+if (requireNamespace("devtools", quietly = TRUE) && file.exists("SMFsim/DESCRIPTION")) {
     devtools::load_all("SMFsim/")
 } else {
     library(SMFsim)
@@ -46,9 +46,8 @@ config$dispersion_s      <- 26                      # calibrated to M-series
 config$effect_sizes      <- c(0.10, 0.15, 0.20, 0.30)
 config$seed              <- 42
 config$standard_chr_only <- TRUE
-config$metilene_min_cpg <- 10
-config$methods         <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
-
+config$metilene_min_cpg  <- 10
+config$methods           <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
 
 # --- Guard: never silently overwrite a previous run ----------------------
 # Every block writes under base_output, which is a fixed path, so re-running

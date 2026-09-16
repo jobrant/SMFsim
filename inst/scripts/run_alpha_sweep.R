@@ -44,22 +44,27 @@ suppressWarnings(suppressMessages(library(data.table)))
 
 # === EDIT THESE FOR YOUR ENVIRONMENT =====================================
 config <- parse_args()
-config$data_dir      <- "../m-series-data/data/allc"
-config$sample_sheet  <- "../m-series-data/data/sample_sheet.csv"
+config$data_dir      <- "data/allc"
+config$sample_sheet  <- "data/sample_sheet.csv"
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
 base_output          <- "results/alpha_sweep"
 
 # The 2-D grid. Keep it coarse: the point is to locate the optimum and test
 # separability, not to resolve it to two decimal places.
-WITHIN_GRID  <- seq(0.1, 0.9, 0.2)   # 0.1 0.3 0.5 0.7 0.9
-BETWEEN_GRID <- c(0.5, 0.7, 0.9)
+# WITHIN_GRID  <- seq(0.1, 0.9, 0.2)   # 0.1 0.3 0.5 0.7 0.9
+# BETWEEN_GRID <- c(0.5, 0.7, 0.9)
+
+WITHIN_GRID  <- c(0.3, 0.5, 0.7)   
+BETWEEN_GRID <- c(0.8, 0.9, 0.95, 1.0)
+
+
 
 # FAST_TUNE: chr1 only with fewer spike-in regions (~10x faster per cell).
 # Strongly recommended for a 2-D grid -- 15 cells genome-wide is a very long
 # job. Find the optimum here, then confirm the single chosen pair with
 # FAST_TUNE <- FALSE and a 1x1 grid.
-FAST_TUNE <- TRUE
+FAST_TUNE <- FALSE
 # =========================================================================
 
 # Fixed settings — match the main bias run.
