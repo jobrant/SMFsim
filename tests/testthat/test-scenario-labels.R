@@ -92,3 +92,58 @@ test_that(".scenario_label() accepts a factor, as ggplot labellers pass one", {
     expect_equal(.scenario_label(f),
                  c("Aligned Bias (strong)", "Aligned Bias (moderate)"))
 })
+
+
+# --- imbalanced_* batch structure ----------------------------------------
+#
+# The imbalanced scenarios exist to give ComBatMet a batch that CROSSES the
+# group boundary. When they were [min, max] ranges sampled with runif(), the
+# ranges overlapped so little that all of A usually landed above all of B
+# (P = 0.99 for strong, 0.65 for moderate), the median split reproduced the
+# group labels, and ComBatMet was refused as inapplicable in every scenario of
+# the bias block. These tests pin the explicit vectors that replaced them.
+
+.median_split <- function(sc, n_reps = 4L) {
+    a <- .resolve_efficiencies(sc$efficiency_A, n_reps, "A")
+    b <- .resolve_efficiencies(sc$efficiency_B, n_reps, "B")
+    .efficiency_batch(list(efficiency_A = a, efficiency_B = b), n_reps, n_reps)
+}
+
+test_that("imbalanced_* are explicit vectors, not sampled ranges", {
+    sc <- get_efficiency_scenarios()
+    for (nm in c("imbalanced_moderate", "imbalanced_strong")) {
+        expect_length(sc[[nm]]$efficiency_A, 4L)
+        expect_length(sc[[nm]]$efficiency_B, 4L)
+    }
+})
+
+test_that("imbalanced_* hit their stated mean gap exactly", {
+    sc <- get_efficiency_scenarios()
+    gap <- function(s) mean(s$efficiency_A) - mean(s$efficiency_B)
+    expect_equal(gap(sc$imbalanced_moderate), 0.13, tolerance = 1e-12)
+    expect_equal(gap(sc$imbalanced_strong),   0.22, tolerance = 1e-12)
+})
+
+test_that("imbalanced_* median split crosses groups: A = HHHL, B = HLLL", {
+    sc <- get_efficiency_scenarios()
+    for (nm in c("imbalanced_moderate", "imbalanced_strong")) {
+        batch <- as.character(.median_split(sc[[nm]]))
+        expect_identical(sum(batch[1:4] == "high_eff"), 3L, info = nm)
+        expect_identical(sum(batch[5:8] == "high_eff"), 1L, info = nm)
+    }
+})
+
+test_that("aligned_* remain perfectly confounded for any draw", {
+    # Non-overlapping ranges: confounded by construction, so ComBatMet is
+    # correctly inapplicable there whatever the seed.
+    sc <- get_efficiency_scenarios()
+    for (nm in c("aligned_moderate", "aligned_strong")) {
+        for (seed in 1:20) {
+            set.seed(seed)
+            batch <- as.character(.median_split(sc[[nm]]))
+            expect_true(all(batch[1:4] == "high_eff") &&
+                        all(batch[5:8] == "low_eff"),
+                        info = paste(nm, "seed", seed))
+        }
+    }
+})

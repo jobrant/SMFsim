@@ -28,8 +28,9 @@ specificity, not correction.
 
 \section{Between-group bias (the artifact to correct)}{
 
-\verb{aligned_*} and \verb{imbalanced_*}, given as \verb{[min, max]} efficiency RANGES per
-group (sampled per replicate, so they adapt to any replicate count). These are
+\verb{aligned_*} are given as \verb{[min, max]} efficiency RANGES per group (sampled
+per replicate, so they adapt to any replicate count); \verb{imbalanced_*} are
+explicit per-replicate vectors, so their batch structure is fixed. These are
 what make un-normalized (raw) analysis produce false positives (null) and
 biased effects (spike-in).
 \describe{
@@ -43,10 +44,14 @@ condition B on another day with an aged aliquot or lower SAM cofactor.
 Tests the idealized case for label-based correction (the batch maps onto
 the label) and, at the same time, the maximally confounded case for
 separating artifact from biology.}
-\item{imbalanced (per-sample variation)}{OVERLAPPING but shifted ranges:
-group B skews lower on average while individual replicates overlap
-(\code{imbalanced_moderate}: A 0.75-0.93 vs B 0.62-0.80, mean gap ~0.13;
-\code{imbalanced_strong}: A 0.72-0.95 vs B 0.50-0.73, mean gap ~0.22). Models
+\item{imbalanced (per-sample variation)}{Shifted but INTERLEAVED values:
+group B skews lower on average, but one B replicate is more efficient
+than one A replicate, so the median batch split is A = 3 high / 1 low and
+B = 1 high / 3 low (\code{imbalanced_moderate}: mean gap 0.13;
+\code{imbalanced_strong}: mean gap 0.22). These were once sampled from ranges
+that overlapped so little that the split was usually perfectly
+confounded, which made ComBatMet inapplicable in the very scenarios meant
+to test it. Models
 efficiency as a per-sample nuisance (enzyme aliquot, incubation time, DNA
 quality) that only trends with condition, e.g. B is a tissue yielding more
 degraded DNA, or its samples were collected later as reagents aged, with

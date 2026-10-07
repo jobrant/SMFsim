@@ -38,6 +38,12 @@ base_output          <- "results/bias_experiment"
 # Optional extra runs / outputs (off by default to keep the job lean).
 RUN_CLONE_BASELINE <- FALSE   # rerun bias scenarios under clone mode for contrast
 MAKE_FIGURES       <- TRUE   # generate manuscript figures after each block
+# NOTE: do not set SMFSIM_ALLOW_METHOD_FAILURE here. ComBatMet's refusal on the
+# aligned_* scenarios (perfect batch/group confounding) is now signalled as
+# INAPPLICABLE and skipped automatically -- see .method_inapplicable() -- so the
+# override is no longer needed to get past it. Setting it globally would also
+# let a genuine SMFnorm failure through silently, which is how the 2026-09-02
+# run finished with SMFnorm absent from every block.
 # =========================================================================
 
 # --- Simulation settings (shared across blocks) --------------------------
@@ -49,28 +55,61 @@ config$standard_chr_only <- TRUE
 config$metilene_min_cpg  <- 10
 config$methods           <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
 
+# --- Which blocks to run ------------------------------------------------
+# All of them by default. To rerun a subset -- e.g. after changing only the
+# between-group scenarios -- name them in SMFSIM_BLOCKS:
+#
+#   SMFSIM_BLOCKS=bias_parametric Rscript SMFsim/inst/scripts/run_bias_experiment.R
+#
+# Each block writes only under <base_output>/<block>/, so a subset rerun leaves
+# the other blocks' results untouched, and all_blocks.rds is rebuilt at the end
+# from whatever block results are on disk.
+known_blocks <- c("control_within", "bias_parametric", "bias_clone")
+default_blocks <- c("control_within", "bias_parametric",
+                    if (RUN_CLONE_BASELINE) "bias_clone")
+
+blocks_env <- trimws(Sys.getenv("SMFSIM_BLOCKS"))
+run_blocks <- if (nzchar(blocks_env)) {
+    trimws(strsplit(blocks_env, ",")[[1]])
+} else {
+    default_blocks
+}
+unknown <- setdiff(run_blocks, known_blocks)
+if (length(unknown)) {
+    stop("SMFSIM_BLOCKS names unknown block(s): ", paste(unknown, collapse = ", "),
+         ". Valid: ", paste(known_blocks, collapse = ", "), call. = FALSE)
+}
+message("Blocks to run: ", paste(run_blocks, collapse = ", "))
+
 # --- Guard: never silently overwrite a previous run ----------------------
-# Every block writes under base_output, which is a fixed path, so re-running
-# lands on top of whatever is already there and destroys it in place. That is
-# how an earlier run was lost -- not by anyone deleting it. Abort instead, and
-# require the overwrite to be deliberate.
+# Every block writes under a fixed path, so re-running lands on top of whatever
+# is already there and destroys it in place. That is how an earlier run was
+# lost -- not by anyone deleting it. Abort instead, and require the overwrite
+# to be deliberate. Checked per block, so rerunning one block only requires
+# archiving that block's directory.
 #
 # To overwrite on purpose:  SMFSIM_OVERWRITE=1 Rscript inst/scripts/run_bias_experiment.R
 overwrite_ok <- identical(Sys.getenv("SMFSIM_OVERWRITE"), "1")
 
-if (dir.exists(base_output) &&
-    length(list.files(base_output, all.files = TRUE, no.. = TRUE)) > 0) {
+occupied <- Filter(function(b) {
+    d <- file.path(base_output, b)
+    dir.exists(d) && length(list.files(d, all.files = TRUE, no.. = TRUE)) > 0
+}, run_blocks)
+
+if (length(occupied)) {
+    paths <- normalizePath(file.path(base_output, occupied), mustWork = FALSE)
     if (!overwrite_ok) {
         stop(sprintf(
-            paste0("Output directory already exists and is not empty:\n  %s\n",
-                   "Refusing to overwrite a previous run. Archive it under a ",
-                   "dated name, point `base_output` at a new path, or re-run ",
-                   "with SMFSIM_OVERWRITE=1 to overwrite deliberately."),
-            normalizePath(base_output, mustWork = FALSE)),
+            paste0("Output for these blocks already exists and is not empty:\n  %s\n",
+                   "Refusing to overwrite a previous run. Archive each under a ",
+                   "dated name (e.g. mv %s %s_$(date +%%F)_superseded), point ",
+                   "`base_output` at a new path, or re-run with ",
+                   "SMFSIM_OVERWRITE=1 to overwrite deliberately."),
+            paste(paths, collapse = "\n  "), paths[1], paths[1]),
             call. = FALSE)
     }
-    message("SMFSIM_OVERWRITE=1 set -- overwriting existing results in ",
-            base_output)
+    message("SMFSIM_OVERWRITE=1 set -- overwriting existing results in:\n  ",
+            paste(paths, collapse = "\n  "))
 }
 
 dir.create(base_output, recursive = TRUE, showWarnings = FALSE)
@@ -116,37 +155,50 @@ run_block <- function(block, scenarios, rate_between,
 }
 
 # --- Blocks --------------------------------------------------------------
-results <- list()
 
 # (1) Specificity control: matched-mean within-group variation. Parametric so
 #     the null is correctly calibrated; nothing systematic to correct, so
 #     rate_between_groups = FALSE. Expect few/no DMRs for every method.
-results$control <- run_block(
-    "control_within",
-    scenarios    = c("mild", "moderate", "severe"),
-    rate_between = FALSE)
+if ("control_within" %in% run_blocks) {
+    run_block("control_within",
+              scenarios    = c("mild", "moderate", "severe"),
+              rate_between = FALSE)
+}
 
 # (2) The artifact: systematic between-group efficiency bias. rate_between_groups
 #     = TRUE so SMFnorm can correct the between-group shift. Expect RAW to call
 #     false positives (null) and biased DMRs (spike-in); normalization to reduce
-#     them. The imbalanced_* scenarios (overlapping per-sample efficiencies)
-#     stress label-based correction (ComBatMet) the most.
-results$bias <- run_block(
-    "bias_parametric",
-    scenarios    = c("aligned_strong", "aligned_moderate",
-                     "imbalanced_strong", "imbalanced_moderate"),
-    rate_between = TRUE)
+#     them. ComBatMet is inapplicable in aligned_* (batch == group) and runs in
+#     imbalanced_*, whose explicit efficiencies make the batch cross the groups.
+if ("bias_parametric" %in% run_blocks) {
+    run_block("bias_parametric",
+              scenarios    = c("aligned_strong", "aligned_moderate",
+                               "imbalanced_strong", "imbalanced_moderate"),
+              rate_between = TRUE)
+}
 
 # (3) Optional contrast: the same bias scenarios under the old CLONE mode, to
 #     show how the mis-specified (too-tight) null understates raw's FPs.
-if (RUN_CLONE_BASELINE) {
-    results$bias_clone <- run_block(
-        "bias_clone",
-        scenarios    = c("aligned_strong", "imbalanced_strong"),
-        rate_between = TRUE,
-        sim_mode     = "clone")
+if ("bias_clone" %in% run_blocks) {
+    run_block("bias_clone",
+              scenarios    = c("aligned_strong", "imbalanced_strong"),
+              rate_between = TRUE,
+              sim_mode     = "clone")
 }
 
+# --- Combined results ----------------------------------------------------
+# Rebuilt from every block result on disk, not just the blocks run this time,
+# so a subset rerun still leaves a complete all_blocks.rds.
+block_keys <- c(control_within = "control", bias_parametric = "bias",
+                bias_clone = "bias_clone")
+results <- list()
+for (b in names(block_keys)) {
+    rds <- file.path(base_output, b, paste0(b, "_results.rds"))
+    if (file.exists(rds)) {
+        r <- readRDS(rds)
+        results[[block_keys[[b]]]] <- list(null = r$null, spikein = r$spikein)
+    }
+}
 saveRDS(results, file.path(base_output, "all_blocks.rds"))
-message("\nDONE. Results under: ",
+message("\nDONE (ran: ", paste(run_blocks, collapse = ", "), "). Results under: ",
         normalizePath(base_output, mustWork = FALSE))

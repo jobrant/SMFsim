@@ -255,6 +255,10 @@ run_null_simulation <- function(wt_reps, config) {
   scenarios <- scenarios[config$scenarios]
 
   null_results <- list()
+  # Per-scenario record of which methods could legitimately be applied. An
+  # inapplicable method produces no rows in the FP table, and a bare gap there
+  # reads as "scored zero". This makes the distinction explicit and auditable.
+  applicability <- list()
 
   for (sc_name in names(scenarios)) {
     sc <- scenarios[[sc_name]]
@@ -282,6 +286,9 @@ run_null_simulation <- function(wt_reps, config) {
         rate_between_groups = config$rate_between_groups %||% FALSE
       )
     )
+
+    applicability[[sc_name]] <- .applicability_rows(sc_name, config$methods,
+                                                    method_results)
 
     # Call DMRs and classify for each method
     null_results[[sc_name]] <- list()
@@ -322,6 +329,9 @@ run_null_simulation <- function(wt_reps, config) {
   }
 
   # Compile results
+  .write_applicability(applicability, config$output_dir,
+                      "null_method_applicability.csv")
+
   null_summary <- compile_null_results(null_results)
   out_path <- file.path(config$output_dir, "null_simulation_results.csv")
   fwrite(null_summary, out_path)
@@ -371,6 +381,7 @@ run_spikein_simulation <- function(wt_reps, config) {
   fwrite(spikein_regions, regions_path)
   
   all_results <- list()
+  applicability <- list()   # see run_null_simulation()
   
   for (sc_name in names(scenarios)) {
     sc <- scenarios[[sc_name]]
@@ -488,6 +499,9 @@ run_spikein_simulation <- function(wt_reps, config) {
         )
       )
       
+      applicability[[result_key]] <- .applicability_rows(
+        result_key, config$methods, method_results)
+
       # Step 4: Call DMRs and evaluate
       all_results[[result_key]] <- list()
       
@@ -536,6 +550,9 @@ run_spikein_simulation <- function(wt_reps, config) {
   }
   
   # Compile results
+  .write_applicability(applicability, config$output_dir,
+                      "spikein_method_applicability.csv")
+
   spikein_summary <- compile_results(all_results)
   
   # Parse scenario and effect size from the result key

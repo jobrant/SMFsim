@@ -41,12 +41,14 @@ WORKDIR=/orange/jobrant/yuki/smfnorm-sim-manuscript/SMFsim             # package
 R_MODULE=R/4.5                  # e.g. R/4.4
 
 # The LOCKED alphas from the stitched grid. Leave as UNSET to abort.
-# WITHIN_ALPHA=0.5
-# BETWEEN_ALPHA=0.95
+WITHIN_ALPHA=0.5
+BETWEEN_ALPHA=0.95
 # =========================================================================
 
 # --- Refuse to burn 4 days at the wrong parameters -----------------------
-if [ "$WITHIN_ALPHA" = "UNSET" ] || [ "$BETWEEN_ALPHA" = "UNSET" ]; then
+# ${VAR:-UNSET} so a missing or commented-out assignment reaches this message
+# instead of aborting under `set -u` with "unbound variable".
+if [ "${WITHIN_ALPHA:-UNSET}" = "UNSET" ] || [ "${BETWEEN_ALPHA:-UNSET}" = "UNSET" ]; then
     echo "ERROR: WITHIN_ALPHA / BETWEEN_ALPHA are still UNSET." >&2
     echo "Set them to the values locked from the stitched alpha grid" >&2
     echo "(see the 'Separability of the two alphas' block in the stitch log)." >&2
@@ -84,13 +86,15 @@ Rscript -e '
   }
 '
 
-if [ -d results/bias_experiment ] && [ -n "$(ls -A results/bias_experiment)" ]; then
-    echo
-    echo "ERROR: results/bias_experiment already exists and is not empty." >&2
-    echo "The script's guard will abort. Archive it first:" >&2
-    echo "  mv results/bias_experiment results/bias_experiment_\$(date +%F)_superseded" >&2
-    exit 1
-fi
+# Overwrite protection lives in run_bias_experiment.R, which checks only the
+# blocks being run (SMFSIM_BLOCKS) and fails before any data is loaded. A
+# whole-directory check here would block rerunning a single block.
+#
+# To rerun one block, archive just that block and pass SMFSIM_BLOCKS:
+#   mv results/bias_experiment/bias_parametric \
+#      results/bias_experiment/bias_parametric_$(date +%F)_superseded
+#   sbatch --export=ALL,SMFSIM_BLOCKS=bias_parametric SMFsim/inst/slurm/bias_experiment.sbatch
+echo "blocks        : ${SMFSIM_BLOCKS:-all}"
 
 echo
 echo "=== running ==="

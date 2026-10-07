@@ -4,6 +4,105 @@
 # Apply normalization methods to simulated data and call DMRs
 
 
+# Condition helpers -------------------------------------------------------
+
+#' Signal that a method cannot legitimately be applied to this scenario
+#'
+#' A method is INAPPLICABLE when the scenario violates its assumptions by
+#' construction, so there is no meaningful result to produce -- as distinct from
+#' FAILING, where the method should have worked and did not. The canonical case
+#' is ComBatMet on the `aligned_*` scenarios: their efficiency ranges do not
+#' overlap, so the median batch split reproduces the group labels exactly, batch
+#' is perfectly confounded with group, and no batch-correction method can
+#' separate artifact from biology.
+#'
+#' The distinction matters because the two need opposite handling.
+#' [run_all_methods()] aborts the run on a failure -- a silently missing arm is
+#' far more expensive than a crash -- but merely records and skips an
+#' inapplicable one. Conflating them means either a correct refusal kills a
+#' multi-day benchmark, or a genuine crash is waved through; both have happened.
+#'
+#' Raise with `stop(.method_inapplicable(msg, method))`. The condition carries
+#' classes `c("smfsim_method_inapplicable", "error", "condition")`, so an
+#' un-handled one still behaves as an ordinary error.
+#'
+#' @param msg Character. Why the method cannot be applied here.
+#' @param method Optional method name, recorded on the condition.
+#' @return A condition object, to be passed to `stop()`.
+#' @keywords internal
+.method_inapplicable <- function(msg, method = NULL) {
+  structure(
+    class = c("smfsim_method_inapplicable", "error", "condition"),
+    list(message = if (is.null(method)) msg
+                   else paste0(method, ": ", msg),
+         call = NULL,
+         method = method)
+  )
+}
+
+
+#' Tabulate which methods were applied, skipped or missing for one scenario
+#'
+#' Turns the `method_inapplicable` / `method_failures` attributes of a
+#' [run_all_methods()] result into explicit rows. Without this, an inapplicable
+#' method simply has no row in the FP or metrics table, and a reader cannot tell
+#' that gap from a genuine zero -- the exact misreading that
+#' "ComBatMet found zero DMRs" came from.
+#'
+#' @param scenario Scenario name.
+#' @param requested Character vector of methods that were requested.
+#' @param method_results Return value of [run_all_methods()].
+#' @return data.table with scenario, method, status, reason.
+#' @keywords internal
+.applicability_rows <- function(scenario, requested, method_results) {
+  inapp <- attr(method_results, "method_inapplicable") %||% character(0)
+  fails <- attr(method_results, "method_failures") %||% character(0)
+
+  status <- vapply(requested, function(m) {
+    if (m %in% names(method_results)) "applied"
+    else if (m %in% names(inapp)) "inapplicable"
+    else if (m %in% names(fails)) "failed"
+    else "absent"
+  }, character(1))
+
+  reason <- vapply(requested, function(m) {
+    if (m %in% names(inapp)) unname(inapp[[m]])
+    else if (m %in% names(fails)) unname(fails[[m]])
+    else ""
+  }, character(1))
+
+  data.table(scenario = scenario, method = requested,
+             status = unname(status), reason = unname(reason))
+}
+
+
+#' Write the per-scenario method applicability record
+#'
+#' @param applicability List of data.tables from [.applicability_rows()].
+#' @param output_dir Directory to write `method_applicability.csv` into.
+#' @param file_name Output file name.
+#' @return Invisibly, the combined data.table (NULL if there was nothing).
+#' @keywords internal
+.write_applicability <- function(applicability, output_dir,
+                                 file_name = "method_applicability.csv") {
+  if (!length(applicability)) return(invisible(NULL))
+  dt <- data.table::rbindlist(applicability)
+  out <- file.path(output_dir, file_name)
+  data.table::fwrite(dt, out)
+
+  not_applied <- dt[status != "applied"]
+  if (nrow(not_applied)) {
+    message("\nMethods not applied in every scenario -- see ", out, ":")
+    for (i in seq_len(nrow(not_applied))) {
+      message(sprintf("  %-18s %-12s %s", not_applied$scenario[i],
+                      not_applied$method[i], not_applied$status[i]))
+    }
+    message("  Report these as their status, NOT as zero.")
+  }
+  invisible(dt)
+}
+
+
 # Format helpers ----------------------------------------------------------
 
 #' Convert pseudo-group data to the format expected by SMFnorm
@@ -235,9 +334,11 @@ run_SMFnorm <- function(pseudo_groups,
 #'
 #' The split is deliberately scenario-dependent, and that is the point:
 #' \itemize{
-#'   \item `imbalanced_*` scenarios draw the two groups' efficiencies from
-#'     OVERLAPPING ranges, so the split crosses the group boundary and ComBat
-#'     has a genuine, separable artifact to remove.
+#'   \item `imbalanced_*` scenarios use explicit efficiencies that interleave
+#'     across groups (A = 3 high / 1 low, B = 1 high / 3 low), so the split
+#'     crosses the group boundary and ComBat has a separable artifact to
+#'     remove. They must be explicit: sampled from barely-overlapping ranges,
+#'     the split was usually perfectly confounded anyway.
 #'   \item `aligned_*` scenarios use non-overlapping ranges, so the split
 #'     reproduces the group labels exactly. Batch is then perfectly confounded
 #'     with group and no batch-correction method can separate artifact from
@@ -307,17 +408,25 @@ run_combatmet <- function(pseudo_groups, batch = NULL) {
                 collapse = ", "))
 
   # ComBat cannot separate a batch effect from biology when every batch level
-  # sits entirely inside one group. Fail loudly rather than silently returning
+  # sits entirely inside one group. Refuse rather than silently returning
   # group-centred (zero-difference) data, which is what the old implementation
   # did for every scenario.
+  #
+  # This is signalled as an INAPPLICABLE condition rather than a plain error,
+  # because it is the expected, correct outcome for the aligned_* scenarios
+  # (non-overlapping efficiency ranges, so the median split reproduces the group
+  # labels exactly) -- not a defect. run_all_methods() skips an inapplicable
+  # method and records it, instead of treating it as a failed arm and aborting
+  # the run. Report it as "inapplicable under perfect confounding", never as
+  # zero sensitivity.
   confounded <- all(rowSums(table(batch, group) > 0) == 1)
   if (nlevels(batch) < 2 || confounded) {
-    stop("run_combatmet: batch is perfectly confounded with group (each batch ",
-         "level falls entirely within one group), so ComBat cannot separate ",
-         "the efficiency artifact from biological signal. This is expected for ",
-         "the aligned_* scenarios, whose efficiency ranges do not overlap - ",
-         "report the method as inapplicable there, not as zero sensitivity.",
-         call. = FALSE)
+    stop(.method_inapplicable(
+      paste0("batch is perfectly confounded with group (each batch level falls ",
+             "entirely within one group), so ComBat cannot separate the ",
+             "efficiency artifact from biological signal. Expected for the ",
+             "aligned_* scenarios, whose efficiency ranges do not overlap."),
+      method = "ComBatMet"))
   }
 
   rate_matrix <- do.call(cbind,
@@ -743,8 +852,9 @@ run_all_methods <- function(pseudo_groups,
          call. = FALSE)
   }
 
-  results  <- list()
-  failures <- character(0)
+  results      <- list()
+  failures     <- character(0)
+  inapplicable <- character(0)
 
   for (m in methods) {
     message(sprintf("\n=== Running method: %s ===", m))
@@ -761,7 +871,8 @@ run_all_methods <- function(pseudo_groups,
     # warning() is deferred to the end of the log, and if the run ends with
     # "There were N warnings (use warnings() to see them)" the reason is lost
     # for good -- which is what happened to the 2026-09-02 headline run.
-    err <- NULL
+    err  <- NULL
+    skip <- NULL
     result <- tryCatch({
       switch(m,
              raw = run_raw(pseudo_copy),
@@ -771,6 +882,11 @@ run_all_methods <- function(pseudo_groups,
              ComBatMet = run_combatmet(pseudo_copy),
              stop("Unknown method: ", m)
       )
+    # The inapplicable handler MUST come first: the condition also carries
+    # class "error", and tryCatch() dispatches to the FIRST matching handler.
+    }, smfsim_method_inapplicable = function(c) {
+      skip <<- conditionMessage(c)
+      NULL
     }, error = function(e) {
       err <<- conditionMessage(e)
       NULL
@@ -778,7 +894,15 @@ run_all_methods <- function(pseudo_groups,
 
     elapsed <- as.numeric(difftime(Sys.time(), t0, units = "secs"))
 
-    if (is.null(result)) {
+    if (!is.null(skip)) {
+      # Expected and correct: the scenario violates this method's assumptions
+      # by construction, so there is no result to produce. Record it so it can
+      # be reported as inapplicable rather than as zero, and carry on.
+      inapplicable[[m]] <- skip
+      message(sprintf(
+        "Method %s SKIPPED after %.1f seconds - INAPPLICABLE: %s",
+        m, elapsed, skip))
+    } else if (is.null(result)) {
       # Do NOT report a failed method as "completed". The old message printed
       # before the is.null() guard, so a method that errored still logged
       # "Method SMFnorm completed in 9.5 seconds" and was then dropped.
@@ -805,7 +929,11 @@ run_all_methods <- function(pseudo_groups,
   # cases where a partial result is genuinely wanted (e.g. ComBatMet on a
   # machine where it is not installed). Use it deliberately, and never when
   # generating figures -- the arm will be missing, not zero.
-  missing <- setdiff(methods, names(results))
+  # Inapplicable methods are NOT missing arms -- they are a recorded, correct
+  # outcome (see .method_inapplicable). Excluding them here is what lets a
+  # headline run cover both aligned_* (ComBatMet inapplicable) and imbalanced_*
+  # (ComBatMet applicable) in one job, while still aborting if SMFnorm breaks.
+  missing <- setdiff(methods, c(names(results), names(inapplicable)))
   if (length(missing)) {
     detail <- paste(sprintf("  - %s: %s", missing, failures[missing]),
                     collapse = "\n")
@@ -826,7 +954,13 @@ run_all_methods <- function(pseudo_groups,
     }
   }
 
-  attr(results, "method_failures") <- failures
+  if (length(inapplicable)) {
+    message(sprintf("\nInapplicable in this scenario (reported, not zero): %s",
+                    paste(names(inapplicable), collapse = ", ")))
+  }
+
+  attr(results, "method_failures")     <- failures
+  attr(results, "method_inapplicable") <- inapplicable
 
   return(results)
 }

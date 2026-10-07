@@ -11,9 +11,4 @@ Exogenous methyltransferase assays (MAPit, NOMe-seq, Fiber-seq) probe chromatin 
 \author{
 \strong{Maintainer}: Jason Orr Brant \email{jobrant@ufl.edu}
 
-Authors:
-\itemize{
-  \item Jason Orr Brant \email{jobrant@ufl.edu}
-}
-
 }

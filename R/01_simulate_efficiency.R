@@ -886,8 +886,9 @@ inject_spikein_parametric <- function(ref_dt, p, regions,
 #' specificity, not correction.
 #'
 #' @section Between-group bias (the artifact to correct):
-#' `aligned_*` and `imbalanced_*`, given as `[min, max]` efficiency RANGES per
-#' group (sampled per replicate, so they adapt to any replicate count). These are
+#' `aligned_*` are given as `[min, max]` efficiency RANGES per group (sampled
+#' per replicate, so they adapt to any replicate count); `imbalanced_*` are
+#' explicit per-replicate vectors, so their batch structure is fixed. These are
 #' what make un-normalized (raw) analysis produce false positives (null) and
 #' biased effects (spike-in).
 #' \describe{
@@ -901,10 +902,14 @@ inject_spikein_parametric <- function(ref_dt, p, regions,
 #'     Tests the idealized case for label-based correction (the batch maps onto
 #'     the label) and, at the same time, the maximally confounded case for
 #'     separating artifact from biology.}
-#'   \item{imbalanced (per-sample variation)}{OVERLAPPING but shifted ranges:
-#'     group B skews lower on average while individual replicates overlap
-#'     (`imbalanced_moderate`: A 0.75-0.93 vs B 0.62-0.80, mean gap ~0.13;
-#'     `imbalanced_strong`: A 0.72-0.95 vs B 0.50-0.73, mean gap ~0.22). Models
+#'   \item{imbalanced (per-sample variation)}{Shifted but INTERLEAVED values:
+#'     group B skews lower on average, but one B replicate is more efficient
+#'     than one A replicate, so the median batch split is A = 3 high / 1 low and
+#'     B = 1 high / 3 low (`imbalanced_moderate`: mean gap 0.13;
+#'     `imbalanced_strong`: mean gap 0.22). These were once sampled from ranges
+#'     that overlapped so little that the split was usually perfectly
+#'     confounded, which made ComBatMet inapplicable in the very scenarios meant
+#'     to test it. Models
 #'     efficiency as a per-sample nuisance (enzyme aliquot, incubation time, DNA
 #'     quality) that only trends with condition, e.g. B is a tissue yielding more
 #'     degraded DNA, or its samples were collected later as reagents aged, with
@@ -971,16 +976,34 @@ get_efficiency_scenarios <- function() {
       efficiency_B = c(0.55, 0.65)    # mean ~ 0.60
     ),
 
-    # --- Between-group bias: imbalanced (per-sample, overlapping ranges) ------
+    # --- Between-group bias: imbalanced (batch crosses the group boundary) ----
+    # These exist to stress label-based correction (ComBatMet), which needs the
+    # efficiency batch to CROSS the group boundary. They used to be [min, max]
+    # ranges sampled with runif(), but the ranges overlapped so little that with
+    # 4 draws per group all of A usually landed above all of B: the median batch
+    # split then reproduced the group labels, and ComBatMet was (correctly)
+    # refused as inapplicable. P(perfect confounding) was 0.99 for strong and
+    # 0.65 for moderate, and seed 42 hit it in both, so ComBatMet never ran here.
+    #
+    # Explicit vectors fix the batch structure by construction: the median
+    # split puts 3 of A and 1 of B in the high batch (A = HHHL, B = HLLL), i.e.
+    # 75% confounded, the same structure as `severe`. Values stay inside the
+    # original ranges and hit the stated Δmean exactly. Strong's crossing is
+    # only 0.01 wide because its original ranges overlapped by only 0.01 --
+    # as close to confounded as possible without being confounded.
     imbalanced_moderate = list(
-      label = "Imbalanced per-sample bias (Δmean ~ 0.13, ranges overlap)",
-      efficiency_A = c(0.75, 0.93),   # mean ~ 0.84
-      efficiency_B = c(0.62, 0.80)    # mean ~ 0.71
+      label = "Imbalanced per-sample bias (Δmean = 0.13, batch crosses groups)",
+      # Group A: mean 0.855, range 0.76-0.93
+      efficiency_A = c(0.93, 0.88, 0.85, 0.76),
+      # Group B: mean 0.725, range 0.68-0.80
+      efficiency_B = c(0.80, 0.72, 0.70, 0.68)
     ),
     imbalanced_strong = list(
-      label = "Imbalanced per-sample bias (Δmean ~ 0.22, ranges overlap)",
-      efficiency_A = c(0.72, 0.95),   # mean ~ 0.835
-      efficiency_B = c(0.50, 0.73)    # mean ~ 0.615
+      label = "Imbalanced per-sample bias (Δmean = 0.22, batch crosses groups)",
+      # Group A: mean 0.8725, range 0.72-0.95
+      efficiency_A = c(0.95, 0.92, 0.90, 0.72),
+      # Group B: mean 0.6525, range 0.60-0.73
+      efficiency_B = c(0.73, 0.65, 0.63, 0.60)
     )
   )
 }

@@ -33,7 +33,7 @@
 # Usage (from the package root):
 #   Rscript inst/scripts/run_alpha_sweep.R
 # SLURM array (one CELL per task, 1..nrow(GRID)):
-#   sbatch --array=1-15 ... ; then one plain run to stitch + plot.
+#   sbatch --array=1-12 ... ; then one plain run to stitch + plot.
 
 if (requireNamespace("devtools", quietly = TRUE) && file.exists("DESCRIPTION")) {
     devtools::load_all(".")

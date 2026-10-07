@@ -166,3 +166,102 @@ test_that("range-based bias scenarios are not subject to the matched guard", {
                              mode = "parametric", seed = 42,
                              dispersion_s = 26))
 })
+
+
+# --- Inapplicable vs failed ----------------------------------------------
+#
+# ComBatMet correctly refuses on the aligned_* scenarios: their efficiency
+# ranges do not overlap, so the median batch split reproduces the group labels
+# and batch is perfectly confounded with group. The completeness backstop
+# originally treated that refusal as a failure and killed the headline run, so
+# the backstop was disabled wholesale with SMFSIM_ALLOW_METHOD_FAILURE=1 --
+# which would also have waved through a genuine SMFnorm crash. These tests pin
+# the distinction.
+
+.mk_confounded <- function(aligned = TRUE, n = 300) {
+    set.seed(1)
+    base <- stats::runif(n, 0.15, 0.55)
+    mk <- function(effs, prefix) stats::setNames(lapply(effs, function(e) {
+        r <- pmin(pmax(base * e + stats::rnorm(n, 0, .02), 0.01), 0.99)
+        data.table::data.table(chr = "chr1", pos = seq_len(n), strand = "+",
+                               site = seq_len(n), cov = 20L, rate = r,
+                               mc = as.integer(round(20 * r)))
+    }), paste0(prefix, "_", seq_along(effs)))
+
+    if (aligned) {   # non-overlapping, like aligned_strong
+        eA <- c(0.95, 0.90, 0.88, 0.92); eB <- c(0.60, 0.57, 0.63, 0.58)
+    } else {         # overlapping, like imbalanced_strong
+        eA <- c(0.93, 0.70, 0.88, 0.75); eB <- c(0.80, 0.62, 0.85, 0.66)
+    }
+    list(PseudoA = mk(eA, "PseudoA"), PseudoB = mk(eB, "PseudoB"),
+         params = list(efficiency_A = eA, efficiency_B = eB))
+}
+
+
+test_that(".method_inapplicable is an error subclass, so unhandled it still stops", {
+    cond <- .method_inapplicable("nope", method = "X")
+    expect_s3_class(cond, "smfsim_method_inapplicable")
+    expect_s3_class(cond, "error")
+    expect_error(stop(cond), "X: nope")
+})
+
+
+test_that("run_combatmet signals INAPPLICABLE, not a plain error, under confounding", {
+    skip_if_not_installed("ComBatMet")
+    expect_error(run_combatmet(.mk_confounded(aligned = TRUE)),
+                 class = "smfsim_method_inapplicable")
+})
+
+
+test_that("an inapplicable method is skipped and recorded, and the run continues", {
+    skip_if_not_installed("ComBatMet")
+    res <- run_all_methods(.mk_confounded(aligned = TRUE),
+                           methods = c("raw", "SMFnorm", "ComBatMet"))
+
+    expect_setequal(names(res), c("raw", "SMFnorm"))
+    expect_named(attr(res, "method_inapplicable"), "ComBatMet")
+    expect_match(attr(res, "method_inapplicable")[["ComBatMet"]],
+                 "confounded with group")
+    expect_length(attr(res, "method_failures"), 0L)
+})
+
+
+test_that("the same method runs normally when batch crosses the group boundary", {
+    skip_if_not_installed("ComBatMet")
+    res <- run_all_methods(.mk_confounded(aligned = FALSE),
+                           methods = c("raw", "ComBatMet"))
+
+    expect_setequal(names(res), c("raw", "ComBatMet"))
+    expect_length(attr(res, "method_inapplicable"), 0L)
+})
+
+
+test_that("an inapplicable arm does not mask a genuine failure elsewhere", {
+    skip_if_not_installed("ComBatMet")
+    # ComBatMet inapplicable AND a real failure in the same scenario: the run
+    # must still abort, and must name only the real failure as missing.
+    err <- tryCatch(
+        run_all_methods(.mk_confounded(aligned = TRUE),
+                        methods = c("raw", "ComBatMet", "bogus")),
+        error = function(e) conditionMessage(e))
+
+    expect_match(err, "1 of 3 requested method\\(s\\) produced no results")
+    expect_match(err, "bogus")
+    expect_no_match(err, "- ComBatMet")
+})
+
+
+test_that(".applicability_rows distinguishes applied / inapplicable / failed", {
+    res <- structure(
+        list(raw = list(), SMFnorm = list()),
+        method_inapplicable = c(ComBatMet = "confounded"),
+        method_failures     = c(bogus = "Unknown method: bogus"))
+
+    dt <- .applicability_rows("aligned_strong",
+                              c("raw", "SMFnorm", "ComBatMet", "bogus"), res)
+
+    expect_identical(dt$status,
+                     c("applied", "applied", "inapplicable", "failed"))
+    expect_identical(dt$reason[3], "confounded")
+    expect_identical(unique(dt$scenario), "aligned_strong")
+})

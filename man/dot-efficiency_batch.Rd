@@ -23,9 +23,11 @@ QC (high- vs low-efficiency samples).
 \details{
 The split is deliberately scenario-dependent, and that is the point:
 \itemize{
-\item \verb{imbalanced_*} scenarios draw the two groups' efficiencies from
-OVERLAPPING ranges, so the split crosses the group boundary and ComBat
-has a genuine, separable artifact to remove.
+\item \verb{imbalanced_*} scenarios use explicit efficiencies that interleave
+across groups (A = 3 high / 1 low, B = 1 high / 3 low), so the split
+crosses the group boundary and ComBat has a separable artifact to
+remove. They must be explicit: sampled from barely-overlapping ranges,
+the split was usually perfectly confounded anyway.
 \item \verb{aligned_*} scenarios use non-overlapping ranges, so the split
 reproduces the group labels exactly. Batch is then perfectly confounded
 with group and no batch-correction method can separate artifact from
