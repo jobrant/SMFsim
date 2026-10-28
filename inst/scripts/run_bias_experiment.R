@@ -18,7 +18,8 @@
 #   bias_parametric -- systematic between-group efficiency bias (the artifact)
 #   bias_clone      -- optional: same bias under the old clone mode, for contrast
 #
-# Calibration (s = 26, parametric mode) comes from inst/scripts/diagnose_variance.R.
+# Replicate noise (dispersion_s, fragment_rho) comes from
+# inst/scripts/calibrate_replicate_noise.R (earlier: s = 26 from diagnose_variance.R).
 
 # --- Load package --------------------------------------------------------
 if (requireNamespace("devtools", quietly = TRUE) && file.exists("SMFsim/DESCRIPTION")) {
@@ -29,11 +30,12 @@ if (requireNamespace("devtools", quietly = TRUE) && file.exists("SMFsim/DESCRIPT
 
 # === EDIT THESE FOR YOUR ENVIRONMENT =====================================
 config <- parse_args()
-config$data_dir      <- "data/allc"
+config$data_dir      <- "data/allc_methylseq4.2_clip5"
 config$sample_sheet  <- "data/sample_sheet.csv"
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
-base_output          <- "results/bias_experiment"
+# Override with SMFSIM_OUTPUT (e.g. for robustness runs) instead of editing this.
+base_output          <- Sys.getenv("SMFSIM_OUTPUT", "results/bias_experiment")
 
 # Optional extra runs / outputs (off by default to keep the job lean).
 RUN_CLONE_BASELINE <- FALSE   # rerun bias scenarios under clone mode for contrast
@@ -48,7 +50,7 @@ MAKE_FIGURES       <- TRUE   # generate manuscript figures after each block
 
 # --- Simulation settings (shared across blocks) --------------------------
 config$sim_mode          <- "parametric"            # independent group construction
-config$dispersion_s      <- 26                      # calibrated to M-series
+config$dispersion_s      <- 128  # calibrate_replicate_noise.R, M1 (2026-10-28); was 26
 config$effect_sizes      <- c(0.10, 0.15, 0.20, 0.30)
 config$seed              <- 42
 config$standard_chr_only <- TRUE
@@ -157,12 +159,15 @@ run_block <- function(block, scenarios, rate_between,
 # --- Blocks --------------------------------------------------------------
 
 # (1) Specificity control: matched-mean within-group variation. Parametric so
-#     the null is correctly calibrated; nothing systematic to correct, so
-#     rate_between_groups = FALSE. Expect few/no DMRs for every method.
+#     the null is correctly calibrated. Expect few/no DMRs for every method.
+#     SMFnorm runs with its default between-group step ON, the configuration
+#     the paper recommends. (Until 2026-10-28 this block used FALSE; but
+#     within-group-only normalization sharpens any between-group efficiency
+#     gap, and matched-mean scenarios could never reveal that.)
 if ("control_within" %in% run_blocks) {
     run_block("control_within",
               scenarios    = c("mild", "moderate", "severe"),
-              rate_between = FALSE)
+              rate_between = TRUE)
 }
 
 # (2) The artifact: systematic between-group efficiency bias. rate_between_groups

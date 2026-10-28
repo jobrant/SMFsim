@@ -35,16 +35,24 @@
 # SLURM array (one CELL per task, 1..nrow(GRID)):
 #   sbatch --array=1-12 ... ; then one plain run to stitch + plot.
 
+# Load SMFsim from SOURCE when it is reachable, so a run always uses the code
+# in this checkout: from the package root (DESCRIPTION) or from the manuscript
+# root (SMFsim/DESCRIPTION). Only otherwise fall back to the installed copy,
+# which can lag behind the source.
 if (requireNamespace("devtools", quietly = TRUE) && file.exists("DESCRIPTION")) {
     devtools::load_all(".")
+} else if (requireNamespace("devtools", quietly = TRUE) &&
+           file.exists("SMFsim/DESCRIPTION")) {
+    devtools::load_all("SMFsim/")
 } else {
+    message("NOTE: using the INSTALLED SMFsim, not this checkout's source.")
     library(SMFsim)
 }
 suppressWarnings(suppressMessages(library(data.table)))
 
 # === EDIT THESE FOR YOUR ENVIRONMENT =====================================
 config <- parse_args()
-config$data_dir      <- "data/allc"
+config$data_dir      <- "data/allc_methylseq4.2_clip5"
 config$sample_sheet  <- "data/sample_sheet.csv"
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
@@ -69,7 +77,7 @@ FAST_TUNE <- FALSE
 
 # Fixed settings — match the main bias run.
 config$sim_mode            <- "parametric"
-config$dispersion_s        <- 26
+config$dispersion_s        <- 128  # calibrate_replicate_noise.R, M1 (2026-10-28); was 26
 config$rate_between_groups <- TRUE
 config$methods             <- c("SMFnorm")   # only alpha-dependent method
 config$scenarios           <- c("aligned_moderate", "aligned_strong",

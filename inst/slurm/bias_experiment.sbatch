@@ -40,9 +40,12 @@ set -euo pipefail
 WORKDIR=/orange/jobrant/yuki/smfnorm-sim-manuscript/SMFsim             # package root
 R_MODULE=R/4.5                  # e.g. R/4.4
 
-# The LOCKED alphas from the stitched grid. Leave as UNSET to abort.
-WITHIN_ALPHA=0.5
-BETWEEN_ALPHA=0.95
+# Alphas passed to run_bias_experiment.R (they override the parse_args()
+# defaults). Leave as UNSET to abort. 1.0 = no shrinkage, the default since
+# 2026-10-28: alpha only scales site-level deviations, and values < 1 inflated
+# false positives on the real M1 2-vs-2 null. Previously 0.5 / 0.95.
+WITHIN_ALPHA=1.0
+BETWEEN_ALPHA=1.0
 # =========================================================================
 
 # --- Refuse to burn 4 days at the wrong parameters -----------------------
@@ -95,12 +98,18 @@ Rscript -e '
 #      results/bias_experiment/bias_parametric_$(date +%F)_superseded
 #   sbatch --export=ALL,SMFSIM_BLOCKS=bias_parametric SMFsim/inst/slurm/bias_experiment.sbatch
 echo "blocks        : ${SMFSIM_BLOCKS:-all}"
+# Optional: SMFSIM_OUTPUT (output folder, default results/bias_experiment) and
+# SMFSIM_EXTRA_ARGS (extra parse_args options, e.g. '--efficiency_model logit').
+echo "output        : ${SMFSIM_OUTPUT:-results/bias_experiment}"
+echo "extra args    : ${SMFSIM_EXTRA_ARGS:-none}"
 
 echo
 echo "=== running ==="
+# shellcheck disable=SC2086  # SMFSIM_EXTRA_ARGS is word-split on purpose
 Rscript SMFsim/inst/scripts/run_bias_experiment.R \
     --within_alpha  "$WITHIN_ALPHA" \
-    --between_alpha "$BETWEEN_ALPHA"
+    --between_alpha "$BETWEEN_ALPHA" \
+    ${SMFSIM_EXTRA_ARGS:-}
 
 echo
 echo "finished      : $(date)"

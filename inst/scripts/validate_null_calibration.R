@@ -35,9 +35,17 @@
 # Start with FAST_MODE <- TRUE (chr1 only, ~20-40 min) to catch plumbing errors
 # cheaply, then re-run with FAST_MODE <- FALSE for the real calibration verdict.
 
+# Load SMFsim from SOURCE when it is reachable, so a run always uses the code
+# in this checkout: from the package root (DESCRIPTION) or from the manuscript
+# root (SMFsim/DESCRIPTION). Only otherwise fall back to the installed copy,
+# which can lag behind the source.
 if (requireNamespace("devtools", quietly = TRUE) && file.exists("DESCRIPTION")) {
     devtools::load_all(".")
+} else if (requireNamespace("devtools", quietly = TRUE) &&
+           file.exists("SMFsim/DESCRIPTION")) {
+    devtools::load_all("SMFsim/")
 } else {
+    message("NOTE: using the INSTALLED SMFsim, not this checkout's source.")
     library(SMFsim)
 }
 suppressWarnings(suppressMessages(library(data.table)))
@@ -49,11 +57,13 @@ suppressWarnings(suppressMessages(library(data.table)))
 
 # === EDIT THESE FOR YOUR ENVIRONMENT =====================================
 config <- parse_args()
-config$data_dir      <- "data/allc"
+config$data_dir      <- "data/allc_methylseq4.2_clip5"
 config$sample_sheet  <- "data/sample_sheet.csv"
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
-base_output          <- "/orange/jobrant/yuki/smfnorm-sim-manuscript/results/null_calibration"
+# Override with SMFSIM_OUTPUT (e.g. for robustness runs) instead of editing this.
+base_output          <- Sys.getenv("SMFSIM_OUTPUT",
+                                   "/orange/jobrant/yuki/smfnorm-sim-manuscript/results/null_calibration")
 
 FAST_MODE <- FALSE   # TRUE = chr1 only. Do this first, then set FALSE.
 # =========================================================================
@@ -61,8 +71,8 @@ FAST_MODE <- FALSE   # TRUE = chr1 only. Do this first, then set FALSE.
 # True null: within-group efficiency variation, matched group means, no
 # between-group artifact, so nothing for any method to legitimately call.
 config$sim_mode            <- "parametric"
-config$dispersion_s        <- 26
-config$rate_between_groups <- FALSE
+config$dispersion_s        <- 128  # calibrate_replicate_noise.R, M1 (2026-10-28); was 26
+config$rate_between_groups <- TRUE    # SMFnorm default; see parse_args()
 config$scenarios           <- c("mild", "moderate", "severe")
 config$methods             <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
 config$seed                <- 42
@@ -73,15 +83,28 @@ if (FAST_MODE) {
     message("FAST_MODE: chr1 only -> ", base_output)
 }
 config$output_dir <- base_output
+
+# Never write into a previous run: CHECK 1 scans every metilene log under
+# base_output, so leftovers would be counted as part of this run.
+if (dir.exists(base_output) &&
+    length(list.files(base_output, all.files = TRUE, no.. = TRUE)) > 0 &&
+    !identical(Sys.getenv("SMFSIM_OVERWRITE"), "1")) {
+    stop("Output directory is not empty: ", base_output,
+         "\nArchive it under a dated name, set SMFSIM_OUTPUT to a new path, ",
+         "or re-run with SMFSIM_OVERWRITE=1.", call. = FALSE)
+}
 dir.create(base_output, recursive = TRUE, showWarnings = FALSE)
 
-# --- Record the significance path actually in force ----------------------
+# --- Record the settings actually in force --------------------------------
 message("\n", strrep("=", 64))
-message("Significance settings (inherited from parse_args)")
+message("Settings (parse_args defaults, script settings, SMFSIM_EXTRA_ARGS)")
 message(strrep("=", 64))
-for (k in c("metilene_min_diff", "metilene_min_effect", "metilene_qval",
+message("  output               = ", base_output)
+for (k in c("data_dir", "metilene_min_diff", "metilene_min_effect", "metilene_qval",
             "metilene_q_source", "metilene_p_column", "metilene_mtc",
-            "metilene_min_cpg", "min_coverage", "within_alpha", "dispersion_s")) {
+            "metilene_min_cpg", "min_coverage", "within_alpha", "between_alpha",
+            "rate_between_groups", "dispersion_s", "fragment_rho",
+            "efficiency_model", "bio_region_sd")) {
     message(sprintf("  %-20s = %s", k, format(config[[k]])))
 }
 
