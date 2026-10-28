@@ -4,7 +4,15 @@
 \alias{.draw_parametric_rep}
 \title{Draw one parametric replicate from a per-site true rate}
 \usage{
-.draw_parametric_rep(template, p, efficiency, seed_i, dispersion_s = NULL)
+.draw_parametric_rep(
+  template,
+  p,
+  efficiency,
+  seed_i,
+  dispersion_s = NULL,
+  noise = NULL,
+  efficiency_model = "multiplicative"
+)
 }
 \arguments{
 \item{template}{Source data.table supplying coordinates and \code{cov}.}
@@ -16,6 +24,13 @@
 \item{seed_i}{Integer seed for this replicate.}
 
 \item{dispersion_s}{Optional Beta precision (\code{NULL}/\code{Inf} = binomial).}
+
+\item{noise}{\code{NULL} (site-independent noise, the original behaviour) or a
+list from \code{\link[=.noise_from_config]{.noise_from_config()}}.}
+
+\item{efficiency_model}{How efficiency acts on the true rate:
+"multiplicative" (default here, the original behaviour) or "logit"; see
+\code{\link[=.apply_efficiency]{.apply_efficiency()}}.}
 }
 \value{
 data.table copy of \code{template} with regenerated \code{mc} and \code{rate}.
@@ -24,5 +39,29 @@ data.table copy of \code{template} with regenerated \code{mc} and \code{rate}.
 Reuses the template's real coordinates and coverage, but regenerates \code{mc}
 from scratch as \code{BetaBinom(cov, p * efficiency, dispersion_s)}. Seeded
 independently so replicates and groups share no realized noise.
+}
+\details{
+Two optional, structured noise components (\code{noise}, see
+\code{\link[=.noise_from_config]{.noise_from_config()}}) make replicates behave like real ones:
+\describe{
+\item{Shared-fragment noise (\code{fragment_rho}, \code{fragment_bp})}{Sites read
+on the same sequenced molecules share their sampling noise: in real M1
+data, replicate residuals of neighbouring GpC sites correlate at ~0.34
+within 50 bp and ~0 beyond. The binomial read-sampling draw is made
+through a Gaussian copula whose normal is shared, with weight
+\code{fragment_rho}, by all sites in the same \code{fragment_bp} block. Each
+count stays exactly \verb{Binomial(cov, latent rate)} given its latent rate,
+so the dispersion calibration is unchanged. (Sharing the Beta latent
+instead cannot reach the observed correlation when overdispersion is
+low: the correlation comes from shared reads, not shared rates.)}
+\item{Region-level biological variation (\code{bio_region_sd},
+\code{bio_region_bp})}{Each replicate gets its own shift of the TRUE rate,
+normal on the logit scale with SD \code{bio_region_sd}, shared by all sites
+in a \code{bio_region_bp} block, applied before efficiency. This is the
+between-individual variation of tissue or patient samples. The M1 cell
+line shows none (residual correlation ~0 beyond 150 bp), so it is off
+by default and used as a stress test: shrinkage-type normalization looks
+harmless without it.}
+}
 }
 \keyword{internal}

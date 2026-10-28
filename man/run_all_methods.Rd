@@ -7,7 +7,7 @@
 run_all_methods(
   pseudo_groups,
   methods = c("raw", "downsampled", "SMFnorm", "ComBatMet"),
-  SMFnorm_params = list(within_alpha = 0.5, between_alpha = 1, min_coverage = 10)
+  SMFnorm_params = list(within_alpha = 1, between_alpha = 1, min_coverage = 10)
 )
 }
 \arguments{

@@ -282,19 +282,22 @@ run_downsampled <- function(pseudo_groups) {
 #' Run SMFnorm normalization pipeline
 #'
 #' @param pseudo_groups List from create_pseudo_groups().
-#' @param within_alpha Alpha for within-group rate normalization.
-#' @param between_alpha Alpha for between-group rate normalization.
+#' @param within_alpha Shrinkage of site-level deviations in SMFnorm's
+#'   within-group rate step (default 1, none). The efficiency correction is
+#'   applied in full at any value; alpha < 1 only shrinks noise.
+#' @param between_alpha Same, for the between-group step (default 1).
 #' @param min_coverage Minimum coverage threshold.
-#' @param rate_between_groups Logical: correct between-group rate differences.
-#'   Default FALSE (within-group only). Set TRUE to correct a systematic
-#'   between-group efficiency artifact (e.g. the `aligned_*` bias scenarios);
-#'   leave FALSE for the matched-mean within-group scenarios.
+#' @param rate_between_groups Logical: run SMFnorm's between-group rate step
+#'   (default TRUE). Within-group normalization alone keeps any efficiency
+#'   difference between groups while removing replicate spread, so it makes
+#'   that difference look more significant than in raw data. Set FALSE only
+#'   when conditions are expected to differ genome-wide.
 #' @return Named list with method = "SMFnorm" and normalized split data.
 run_SMFnorm <- function(pseudo_groups,
-                        within_alpha = 0.5,
+                        within_alpha = 1.0,
                         between_alpha = 1.0,
                         min_coverage = 10,
-                        rate_between_groups = FALSE) {
+                        rate_between_groups = TRUE) {
   message(sprintf("Method: SMFnorm (rate_between_groups = %s)",
                   rate_between_groups))
 
@@ -588,6 +591,8 @@ prepare_metilene_input <- function(split_data, out_dir) {
 #'   the selection-biased `q_source = "BH"` recomputation.
 #' @return data.table of significant DMRs with columns: chr, start, end,
 #'   q_value (the chosen one), mean_diff, n_sites, p_mwu, q_metilene, q_bh.
+#'   Stops with an error if metilene exits non-zero or its log lacks the
+#'   "Number of Tests" line: an incomplete run is never reported as 0 DMRs.
 call_dmrs_metilene <- function(split_data,
                                out_dir,
                                metilene_path = "metilene",
@@ -661,17 +666,28 @@ call_dmrs_metilene <- function(split_data,
 
   message("Running metilene: ", cmd)
   exit_code <- system(cmd)
-
-  if (exit_code != 0) {
-    warning("metilene exited with code ", exit_code,
-            ". See log: ", log_file)
-    if (file.exists(log_file)) {
-      message(paste(utils::head(readLines(log_file, warn = FALSE), 20),
-                    collapse = "\n"))
-    }
-  }
-
   n_tests <- .metilene_n_tests(log_file)
+
+  # A metilene run that did not complete must stop the analysis. Returning an
+  # empty table here (as this function used to) scores a crash as "0 DMRs" -
+  # a perfect null, and zero sensitivity in a spike-in - and the warning was
+  # deferred to the end of an Rscript log where nobody saw it. Two signs of an
+  # incomplete run: a non-zero exit (e.g. 137 when killed for memory), or a log
+  # without metilene's final "Number of Tests" line, which every completed run
+  # prints (checked across 382 runs, 2026-10-27).
+  if (exit_code != 0 || is.na(n_tests)) {
+    log_tail <- if (file.exists(log_file)) {
+      paste(utils::tail(readLines(log_file, warn = FALSE), 10), collapse = "\n  ")
+    } else "(no log file)"
+    stop(sprintf(paste0(
+      "call_dmrs_metilene: metilene did not complete (%s).\n",
+      "  command: %s\n  log: %s\n  last log lines:\n  %s\n",
+      "A crashed run is not '0 DMRs'. Fix the cause (exit 137 = killed, ",
+      "usually out of memory) and rerun."),
+      if (exit_code != 0) paste("exit status", exit_code)
+      else "no 'Number of Tests' line in its log",
+      cmd, log_file, log_tail), call. = FALSE)
+  }
 
   # Parse metilene output
   empty <- data.table(
@@ -697,14 +713,9 @@ call_dmrs_metilene <- function(split_data,
     # p.adjust(n =) treats the unreported tests as non-significant, which is the
     # correct conservative handling: metilene emits its best-scoring segments,
     # so the withheld tests are less significant than the reported ones.
+    # n_tests cannot be NA here: an incomplete run has already stopped above.
     n_emitted <- nrow(dmrs)
-    if (is.na(n_tests)) {
-      warning("call_dmrs_metilene: could not read 'Number of Tests' from ",
-              log_file, "; falling back to BH over the ", n_emitted,
-              " emitted segments only. This UNDER-CORRECTS - metilene ",
-              "typically tests far more segments than it emits.", call. = FALSE)
-      n_bh <- n_emitted
-    } else if (n_tests < n_emitted) {
+    if (n_tests < n_emitted) {
       warning("call_dmrs_metilene: metilene reported ", n_tests, " tests but ",
               "emitted ", n_emitted, " segments; using the emitted count as ",
               "the BH denominator.", call. = FALSE)
@@ -839,7 +850,7 @@ call_dmrs_metilene <- function(split_data,
 run_all_methods <- function(pseudo_groups,
                             methods = c("raw", "downsampled", "SMFnorm", "ComBatMet"),
                             SMFnorm_params = list(
-                              within_alpha = 0.5,
+                              within_alpha = 1.0,
                               between_alpha = 1.0,
                               min_coverage = 10
                             )) {

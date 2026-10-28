@@ -6,25 +6,28 @@
 \usage{
 run_SMFnorm(
   pseudo_groups,
-  within_alpha = 0.5,
+  within_alpha = 1,
   between_alpha = 1,
   min_coverage = 10,
-  rate_between_groups = FALSE
+  rate_between_groups = TRUE
 )
 }
 \arguments{
 \item{pseudo_groups}{List from create_pseudo_groups().}
 
-\item{within_alpha}{Alpha for within-group rate normalization.}
+\item{within_alpha}{Shrinkage of site-level deviations in SMFnorm's
+within-group rate step (default 1, none). The efficiency correction is
+applied in full at any value; alpha < 1 only shrinks noise.}
 
-\item{between_alpha}{Alpha for between-group rate normalization.}
+\item{between_alpha}{Same, for the between-group step (default 1).}
 
 \item{min_coverage}{Minimum coverage threshold.}
 
-\item{rate_between_groups}{Logical: correct between-group rate differences.
-Default FALSE (within-group only). Set TRUE to correct a systematic
-between-group efficiency artifact (e.g. the \verb{aligned_*} bias scenarios);
-leave FALSE for the matched-mean within-group scenarios.}
+\item{rate_between_groups}{Logical: run SMFnorm's between-group rate step
+(default TRUE). Within-group normalization alone keeps any efficiency
+difference between groups while removing replicate spread, so it makes
+that difference look more significant than in raw data. Set FALSE only
+when conditions are expected to differ genome-wide.}
 }
 \value{
 Named list with method = "SMFnorm" and normalized split data.

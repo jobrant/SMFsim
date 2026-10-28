@@ -16,7 +16,7 @@
 #
 # Key changes:
 # 1. Uses per-replicate efficiency vectors from get_efficiency_scenarios()
-# 2. rate_between_groups = FALSE (within-group normalization only)
+# 2. rate_between_groups = TRUE by default (see parse_args())
 # 3. Dense region selection for spike-in placement
 
 
@@ -32,7 +32,7 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
 
   # Defaults — adjust these to your local setup
   config <- list(
-    data_dir      = "data/allc",
+    data_dir      = "data/allc_methylseq4.2_clip5",  # canonical since 2026-10-27; 2024 processing in data/allc
     sample_sheet  = "data/sample_sheet.csv",
     output_dir    = "results/simulation",
     metilene_path = "/apps/metilene/0.2.8/metilene",
@@ -70,12 +70,48 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
     metilene_mtc      = 2,   # metilene -c: 1 = Bonferroni, 2 = BH/FDR. Only affects
                              # the stored q_metilene column; set to 2 so it differs
                              # from q_bh by DENOMINATOR alone, as a cross-check.
-    within_alpha = 0.5,
+    # alpha only scales site-level deviations within each rate bin; the
+    # efficiency correction is applied in full at any value. alpha < 1 shrinks
+    # sampling noise and inflated false positives on the real M1 2-vs-2 null
+    # (2026-10-27), so both default to 1 (no shrinkage), matching SMFnorm.
+    within_alpha = 1.0,
     between_alpha = 1.0,
     min_coverage = 10,
-    dispersion_s = Inf,    # Beta precision for overdispersion; Inf = pure binomial
+    # Beta precision for per-site overdispersion (Inf = pure binomial).
+    # Calibrated to real M1 replicates by calibrate_replicate_noise.R after
+    # removing efficiency per rate bin (2026-10-28). The earlier value, 26,
+    # was ~5x too noisy: it was estimated without removing efficiency, which
+    # then counted as replicate noise.
+    dispersion_s = 128,
     sim_mode = "parametric",    # pseudo-group construction: "clone" or "parametric"
-    rate_between_groups = FALSE  # SMFnorm: correct between-group rate differences
+    # SMFnorm between-group rate step. TRUE by default: within-group
+    # normalization alone keeps any efficiency difference between groups
+    # while removing replicate spread, so it makes that difference look MORE
+    # significant than raw (real M1 null: 22 -> 907 false positives). FALSE
+    # only when conditions are expected to differ genome-wide.
+    rate_between_groups = TRUE,
+    # --- Replicate noise structure (parametric mode; see .draw_parametric_rep)
+    # Shared-fragment noise: sites within fragment_bp share part of their
+    # read-sampling noise, weight fragment_rho. Calibrated to real M1 data by
+    # inst/scripts/calibrate_replicate_noise.R.
+    fragment_bp   = 50L,
+    fragment_rho  = 0.59,     # M1, new data, chr1 (2026-10-28): cor_50 0.331 vs real 0.332
+    # Region-level biological variation between replicates (logit-scale SD per
+    # bio_region_bp block). 0 = none, as in the M1 cell line; raise it as a
+    # stress test for tissue- or patient-like replicates.
+    bio_region_sd = 0,
+    bio_region_bp = 1000L,
+    # Which group carries each spike-in effect: "both" (half the regions each,
+    # at random) or "B" (all in group B, the original design).
+    spikein_groups = "both",
+    # How labeling efficiency acts on true rates (parametric mode):
+    # "multiplicative" = rate x efficiency; "logit" = shift on the logit scale
+    # with the same genome-wide loss. In real data (diagnose_efficiency_shape.R)
+    # a constant ratio fits 6 of 7 informative replicate pairs better; only the
+    # most extreme pair, M1 N3 vs N2, fits a logit shift better. Use "logit" as
+    # an alternative shape that SMFnorm's per-bin correction does not invert
+    # exactly. See .apply_efficiency().
+    efficiency_model = "multiplicative"
   )
 
   # Override from command line if provided.
@@ -87,9 +123,11 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
   # were also silently ignored, so a typo ran the job at defaults.
   int_keys  <- c("seed", "n_spikein_regions", "region_width_bp",
                  "metilene_min_cpg", "metilene_max_dist", "min_coverage",
-                 "metilene_mtc", "min_sites", "max_median_spacing")
+                 "metilene_mtc", "min_sites", "max_median_spacing",
+                 "fragment_bp", "bio_region_bp")
   num_keys  <- c("metilene_min_diff", "dispersion_s", "metilene_qval",
-                 "within_alpha", "between_alpha", "metilene_min_effect")
+                 "within_alpha", "between_alpha", "metilene_min_effect",
+                 "fragment_rho", "bio_region_sd")
   flag_keys <- c("rate_between_groups", "standard_chr_only")
   csv_keys  <- c("scenarios", "methods")
   numvec_keys <- c("effect_sizes")
@@ -138,6 +176,23 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
            call. = FALSE)
     }
     i <- i + 2
+  }
+
+  if (!config$efficiency_model %in% c("logit", "multiplicative")) {
+    stop("parse_args: --efficiency_model must be 'logit' or 'multiplicative', ",
+         "got '", config$efficiency_model, "'.", call. = FALSE)
+  }
+  if (!config$spikein_groups %in% c("both", "B")) {
+    stop("parse_args: --spikein_groups must be 'both' or 'B', got '",
+         config$spikein_groups, "'.", call. = FALSE)
+  }
+  if (config$fragment_rho < 0 || config$fragment_rho >= 1) {
+    stop("parse_args: --fragment_rho must be in [0, 1), got ",
+         config$fragment_rho, ".", call. = FALSE)
+  }
+  if (config$bio_region_sd < 0) {
+    stop("parse_args: --bio_region_sd must be >= 0, got ",
+         config$bio_region_sd, ".", call. = FALSE)
   }
 
   return(config)
@@ -272,7 +327,9 @@ run_null_simulation <- function(wt_reps, config) {
       mode = config$sim_mode %||% "clone",
       seed = config$seed,
       dispersion_s = config$dispersion_s,
-      matched_means = isTRUE(sc$matched_means)
+      matched_means = isTRUE(sc$matched_means),
+      noise = .noise_from_config(config),
+      efficiency_model = config$efficiency_model %||% "multiplicative"
     )
 
     # Run all normalization methods
@@ -283,7 +340,7 @@ run_null_simulation <- function(wt_reps, config) {
         within_alpha = config$within_alpha,
         between_alpha = config$between_alpha,
         min_coverage = config$min_coverage %||% 10,
-        rate_between_groups = config$rate_between_groups %||% FALSE
+        rate_between_groups = config$rate_between_groups %||% TRUE
       )
     )
 
@@ -313,9 +370,10 @@ run_null_simulation <- function(wt_reps, config) {
           mtc = config$metilene_mtc %||% 1
         )
       }, error = function(e) {
-        warning(sprintf("DMR calling failed for %s/%s: %s", sc_name, m_name, e$message))
-        data.table(chr = character(), start = integer(), end = integer(),
-                   q_value = numeric(), mean_diff = numeric(), n_sites = integer())
+        # Stop, naming where it failed. Substituting an empty table here used
+        # to score a failed DMR call as "0 false positives".
+        stop(sprintf("DMR calling failed for %s/%s: %s",
+                     sc_name, m_name, conditionMessage(e)), call. = FALSE)
       })
 
       # In null simulation, all DMRs are FP
@@ -374,6 +432,23 @@ run_spikein_simulation <- function(wt_reps, config) {
   
   # Fix data.table internal reference
   spikein_regions <- spikein_regions[]
+
+  # Which group carries each region's effect. With "both" (default), half the
+  # regions are assigned to each group at random. Putting every effect in group
+  # B -- which in the bias scenarios is also the less efficient group, and
+  # with "auto" direction every effect is an increase -- set the efficiency
+  # artifact against the signal in every region, so raw data looked worse than
+  # it would in a real experiment. Clone mode always uses group B.
+  spikein_groups <- config$spikein_groups %||% "both"
+  if (sim_mode == "parametric" && identical(spikein_groups, "both")) {
+    set.seed(config$seed + 3000)
+    spikein_regions[, target_group := sample(rep(c("A", "B"), length.out = .N))]
+  } else {
+    spikein_regions[, target_group := "B"]
+  }
+  message(sprintf("Spike-in effects carried by group A in %d regions, group B in %d",
+                  sum(spikein_regions$target_group == "A"),
+                  sum(spikein_regions$target_group == "B")))
   
   # Save regions for reference
   regions_path <- file.path(config$output_dir, "spikein_regions.csv")
@@ -422,8 +497,9 @@ run_spikein_simulation <- function(wt_reps, config) {
 
 
       if (sim_mode == "parametric") {
-        # Parametric: inject the effect into the pooled TRUE rate for group B,
-        # then draw both groups independently from their respective rates.
+        # Parametric: inject each region's effect into the pooled TRUE rate
+        # of the group it is assigned to, then draw both groups independently
+        # from their respective rates.
         pooled_p <- .pooled_rate(wt_reps)
         inj <- inject_spikein_parametric(
           ref_dt = wt_reps[[1]],
@@ -431,18 +507,22 @@ run_spikein_simulation <- function(wt_reps, config) {
           regions = spikein_regions,
           effect_size = effect,
           direction = "auto",
-          seed = config$seed + 2000
+          seed = config$seed + 2000,
+          target_group = spikein_regions$target_group
         )
+        noise <- .noise_from_config(config)
 
         distorted_A <- mapply(function(dt, eff, i) {
-          .draw_parametric_rep(dt, pooled_p, eff,
-                               config$seed + 4000 + i, config$dispersion_s)
+          .draw_parametric_rep(dt, inj$p_A, eff,
+                               config$seed + 4000 + i, config$dispersion_s,
+                               noise, config$efficiency_model %||% "multiplicative")
         }, wt_reps, eff_A, seq_along(wt_reps), SIMPLIFY = FALSE)
         names(distorted_A) <- paste0("PseudoA_", rep_names)
 
         distorted_B <- mapply(function(dt, eff, i) {
-          .draw_parametric_rep(dt, inj$p, eff,
-                               config$seed + 5000 + i, config$dispersion_s)
+          .draw_parametric_rep(dt, inj$p_B, eff,
+                               config$seed + 5000 + i, config$dispersion_s,
+                               noise, config$efficiency_model %||% "multiplicative")
         }, wt_reps, eff_B, seq_along(wt_reps), SIMPLIFY = FALSE)
         names(distorted_B) <- paste0("PseudoB_", rep_names)
 
@@ -495,7 +575,7 @@ run_spikein_simulation <- function(wt_reps, config) {
           within_alpha = config$within_alpha,
           between_alpha = config$between_alpha,
           min_coverage = config$min_coverage,
-          rate_between_groups = config$rate_between_groups %||% FALSE
+          rate_between_groups = config$rate_between_groups %||% TRUE
         )
       )
       
@@ -526,10 +606,11 @@ run_spikein_simulation <- function(wt_reps, config) {
             mtc = config$metilene_mtc %||% 1
           )
         }, error = function(e) {
-          warning(sprintf("DMR calling failed for %s/%s/effect%.2f: %s",
-                          sc_name, m_name, effect, e$message))
-          data.table(chr = character(), start = integer(), end = integer(),
-                     q_value = numeric(), mean_diff = numeric(), n_sites = integer())
+          # Stop, naming where it failed. Substituting an empty table here
+          # used to score a failed DMR call as 0 sensitivity and 0 FP.
+          stop(sprintf("DMR calling failed for %s/%s/effect%.2f: %s",
+                       sc_name, m_name, effect, conditionMessage(e)),
+               call. = FALSE)
         })
         
         eval_result <- classify_dmrs(

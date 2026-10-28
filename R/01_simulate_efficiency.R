@@ -48,24 +48,199 @@
 }
 
 
+#' Logit shift equivalent to a labeling efficiency
+#'
+#' Solves for the shift \eqn{\delta} such that
+#' \code{mean(plogis(qlogis(p) + delta))} equals \code{efficiency * mean(p)}:
+#' the same genome-wide loss of signal as the multiplicative model, but spread
+#' across rate levels the way real efficiency differences are. Uses an evenly
+#' spaced subsample of sites (deterministic; does not touch the RNG).
+#'
+#' @param p True-rate vector.
+#' @param efficiency Scalar in (0, 1].
+#' @param n_sample Number of sites used to solve for the shift.
+#' @return The shift \eqn{\delta} (<= 0).
+#' @keywords internal
+.efficiency_shift <- function(p, efficiency, n_sample = 2e5) {
+  if (efficiency >= 1) return(0)
+  idx <- unique(round(seq(1, length(p), length.out = min(n_sample, length(p)))))
+  q <- p[idx]
+  inside <- q > 0 & q < 1
+  lq <- stats::qlogis(q[inside])
+  edge <- sum(q[!inside])
+  target <- efficiency * mean(q)
+  f <- function(d) (sum(stats::plogis(lq + d)) + edge) / length(q) - target
+  if (f(-30) > 0) {
+    stop(".efficiency_shift: efficiency ", efficiency, " cannot be reached by a ",
+         "logit shift (too many sites at rate 1).", call. = FALSE)
+  }
+  stats::uniroot(f, c(-30, 0), tol = 1e-8)$root
+}
+
+
+#' Apply labeling efficiency to true rates
+#'
+#' \describe{
+#'   \item{"multiplicative"}{\code{rate * efficiency}: every site loses the
+#'     same fraction. The original SMFsim model, and exactly the shape a
+#'     per-rate-bin correction undoes.}
+#'   \item{"logit"}{\code{plogis(qlogis(rate) + delta)}, with \code{delta}
+#'     from [.efficiency_shift()] so the genome-wide mean loss matches
+#'     \code{efficiency}. Compresses the loss near rates of 0 and 1.}
+#' }
+#'
+#' Evidence (diagnose_efficiency_shape.R, M-series chr1, 2026-10-28): across
+#' rate deciles 4-10, a constant ratio (multiplicative) fits 6 of 7 replicate
+#' pairs with a real efficiency difference better than a constant logit shift.
+#' The exception is the most extreme pair, M1 N3 vs N2 (logit difference
+#' 0.68-0.70 across those deciles while the ratio drifts 1.4 -> 1.8 -> 1.4);
+#' N3 also mixes sequencing runs differently from the other M1 libraries. For
+#' moderate efficiency differences the two shapes are close at the low rates
+#' where most GpC sites lie. "multiplicative" is the default; "logit" is an
+#' alternative shape for robustness checks. In both, the matched-mean logit
+#' shift agrees with the observed one (e.g. 0.72 vs 0.69, 0.41 vs 0.41).
+#'
+#' @param rate True-rate vector.
+#' @param efficiency Scalar in (0, 1].
+#' @param model "multiplicative" or "logit".
+#' @return Expected observed-rate vector.
+#' @keywords internal
+.apply_efficiency <- function(rate, efficiency, model = "multiplicative") {
+  if (identical(model, "multiplicative")) return(rate * efficiency)
+  if (!identical(model, "logit")) {
+    stop(".apply_efficiency: unknown efficiency model '", model, "'.", call. = FALSE)
+  }
+  out <- rate
+  d <- .efficiency_shift(rate, efficiency)
+  if (d == 0) return(out)
+  inside <- rate > 0 & rate < 1
+  out[inside] <- stats::plogis(stats::qlogis(rate[inside]) + d)
+  out
+}
+
+
+#' Group sites into consecutive genomic blocks of a fixed width
+#'
+#' @param chr,pos Site coordinates (sorted within chromosome).
+#' @param bp Block width in base pairs.
+#' @return Integer block id per site, 1..n_blocks.
+#' @keywords internal
+.site_blocks <- function(chr, pos, bp) {
+  data.table::rleid(chr, as.integer(pos) %/% as.integer(bp))
+}
+
+
+#' Replicate-noise settings from a config list
+#'
+#' Collects the structured-noise settings used by [.draw_parametric_rep()].
+#' Returns `NULL` when both components are off, which makes the draw take its
+#' original site-independent path exactly.
+#'
+#' @param config Configuration list from [parse_args()].
+#' @return `NULL` or a list with `fragment_bp`, `fragment_rho`,
+#'   `bio_region_bp`, `bio_region_sd`.
+#' @keywords internal
+.noise_from_config <- function(config) {
+  noise <- list(
+    fragment_bp   = config$fragment_bp   %||% 50L,
+    fragment_rho  = config$fragment_rho  %||% 0,
+    bio_region_bp = config$bio_region_bp %||% 1000L,
+    bio_region_sd = config$bio_region_sd %||% 0
+  )
+  if (noise$fragment_rho <= 0 && noise$bio_region_sd <= 0) return(NULL)
+  noise
+}
+
+
 #' Draw one parametric replicate from a per-site true rate
 #'
 #' Reuses the template's real coordinates and coverage, but regenerates `mc`
 #' from scratch as `BetaBinom(cov, p * efficiency, dispersion_s)`. Seeded
 #' independently so replicates and groups share no realized noise.
 #'
+#' Two optional, structured noise components (`noise`, see
+#' [.noise_from_config()]) make replicates behave like real ones:
+#' \describe{
+#'   \item{Shared-fragment noise (`fragment_rho`, `fragment_bp`)}{Sites read
+#'     on the same sequenced molecules share their sampling noise: in real M1
+#'     data, replicate residuals of neighbouring GpC sites correlate at ~0.34
+#'     within 50 bp and ~0 beyond. The binomial read-sampling draw is made
+#'     through a Gaussian copula whose normal is shared, with weight
+#'     `fragment_rho`, by all sites in the same `fragment_bp` block. Each
+#'     count stays exactly `Binomial(cov, latent rate)` given its latent rate,
+#'     so the dispersion calibration is unchanged. (Sharing the Beta latent
+#'     instead cannot reach the observed correlation when overdispersion is
+#'     low: the correlation comes from shared reads, not shared rates.)}
+#'   \item{Region-level biological variation (`bio_region_sd`,
+#'     `bio_region_bp`)}{Each replicate gets its own shift of the TRUE rate,
+#'     normal on the logit scale with SD `bio_region_sd`, shared by all sites
+#'     in a `bio_region_bp` block, applied before efficiency. This is the
+#'     between-individual variation of tissue or patient samples. The M1 cell
+#'     line shows none (residual correlation ~0 beyond 150 bp), so it is off
+#'     by default and used as a stress test: shrinkage-type normalization looks
+#'     harmless without it.}
+#' }
+#'
 #' @param template Source data.table supplying coordinates and `cov`.
 #' @param p Per-site true rate vector (e.g. from [.pooled_rate()]).
 #' @param efficiency Scalar enzyme efficiency in (0, 1].
 #' @param seed_i Integer seed for this replicate.
 #' @param dispersion_s Optional Beta precision (`NULL`/`Inf` = binomial).
+#' @param noise `NULL` (site-independent noise, the original behaviour) or a
+#'   list from [.noise_from_config()].
+#' @param efficiency_model How efficiency acts on the true rate:
+#'   "multiplicative" (default here, the original behaviour) or "logit"; see
+#'   [.apply_efficiency()].
 #' @return data.table copy of `template` with regenerated `mc` and `rate`.
 #' @keywords internal
 .draw_parametric_rep <- function(template, p, efficiency, seed_i,
-                                 dispersion_s = NULL) {
+                                 dispersion_s = NULL, noise = NULL,
+                                 efficiency_model = "multiplicative") {
   set.seed(seed_i)
   out <- copy(template)
-  mc_new <- .betabinom_counts(p * efficiency, out$cov, dispersion_s)
+
+  if (is.null(noise)) {
+    mc_new <- .betabinom_counts(.apply_efficiency(p, efficiency, efficiency_model),
+                                out$cov, dispersion_s)
+  } else {
+    n <- length(p)
+    rate <- p
+
+    # Region-level biological variation: shift the true rate on the logit
+    # scale, per replicate, before efficiency.
+    if (noise$bio_region_sd > 0) {
+      blk <- .site_blocks(out$chr, out$pos, noise$bio_region_bp)
+      shift <- stats::rnorm(max(blk), 0, noise$bio_region_sd)[blk]
+      inside <- rate > 0 & rate < 1
+      rate[inside] <- stats::plogis(stats::qlogis(rate[inside]) + shift[inside])
+    }
+
+    mu <- pmin(1, pmax(0, .apply_efficiency(rate, efficiency, efficiency_model)))
+    rho <- noise$fragment_rho
+
+    if (rho > 0) {
+      # Per-site latent rate: independent Beta overdispersion, as before.
+      lat <- mu
+      if (!is.null(dispersion_s) && is.finite(dispersion_s)) {
+        mid <- mu > 0 & mu < 1
+        lat[mid] <- stats::rbeta(sum(mid), mu[mid] * dispersion_s,
+                                 (1 - mu[mid]) * dispersion_s)
+      }
+      # Read sampling through a Gaussian copula: sites in the same fragment
+      # block share part of the normal behind their binomial draw, as sites
+      # read on the same molecules do. Each count stays exactly
+      # Binomial(cov, latent rate) given its latent rate.
+      fb <- .site_blocks(out$chr, out$pos, noise$fragment_bp)
+      z <- sqrt(rho) * stats::rnorm(max(fb))[fb] +
+        sqrt(1 - rho) * stats::rnorm(n)
+      mc_new <- stats::qbinom(stats::pnorm(z),
+                              size = pmax(0L, as.integer(round(out$cov))),
+                              prob = lat)
+    } else {
+      mc_new <- .betabinom_counts(mu, out$cov, dispersion_s)
+    }
+  }
+
   set(out, j = "mc", value = mc_new)
   set(out, j = "rate", value = ifelse(out$cov > 0, mc_new / out$cov, 0))
   out
@@ -257,6 +432,12 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL, dispersion_s = NULL
 #' @param dispersion_s Optional Beta precision for beta-binomial overdispersion,
 #'   passed to [simulate_efficiency()]. `NULL`/`Inf` (default) = pure binomial.
 #'   In "parametric" mode this is the primary noise knob (e.g. ~26 for M-series).
+#' @param noise Structured replicate noise for "parametric" mode: `NULL`
+#'   (site-independent, the original behaviour) or a list from
+#'   [.noise_from_config()]. Ignored in "clone" and "split" modes.
+#' @param efficiency_model "multiplicative" or "logit" (see
+#'   [.apply_efficiency()]); "parametric" mode only. Clone mode thins counts
+#'   binomially, which is inherently multiplicative.
 #' @param matched_means Logical. Declare that this scenario is designed to have
 #'   EQUAL group mean efficiencies, i.e. it contains no between-group artifact
 #'   and every call against it is a false positive. When `TRUE`, a realized
@@ -276,7 +457,9 @@ create_pseudo_groups <- function(replicates,
                                  mode = c("clone", "split", "parametric"),
                                  seed = 42,
                                  dispersion_s = NULL,
-                                 matched_means = FALSE) {
+                                 matched_means = FALSE,
+                                 noise = NULL,
+                                 efficiency_model = "multiplicative") {
   mode <- match.arg(mode)
   stopifnot(is.list(replicates), length(replicates) >= 2)
   
@@ -425,12 +608,14 @@ create_pseudo_groups <- function(replicates,
     # Both groups drawn independently from the SAME pooled true rate (null
     # biology); independent seeds mean no shared noise to cancel.
     pseudo_A <- mapply(function(dt, eff, i) {
-      .draw_parametric_rep(dt, pooled_p, eff, seed + i, dispersion_s)
+      .draw_parametric_rep(dt, pooled_p, eff, seed + i, dispersion_s, noise,
+                           efficiency_model)
     }, replicates, eff_vals_A, seq_along(replicates), SIMPLIFY = FALSE)
     names(pseudo_A) <- paste0("PseudoA_", rep_names)
 
     pseudo_B <- mapply(function(dt, eff, i) {
-      .draw_parametric_rep(dt, pooled_p, eff, seed + 1000 + i, dispersion_s)
+      .draw_parametric_rep(dt, pooled_p, eff, seed + 1000 + i, dispersion_s, noise,
+                           efficiency_model)
     }, replicates, eff_vals_B, seq_along(replicates), SIMPLIFY = FALSE)
     names(pseudo_B) <- paste0("PseudoB_", rep_names)
 
@@ -633,7 +818,9 @@ select_dense_spikein_regions <- function(dt,
   # Fix data.table internal reference after rbind loop
   selected <- selected[]
   
-  message(sprintf("Selected %d dense regions (median %d sites, median spacing %.0f bp)",
+  # %g, not %d: with an even number of regions the median can be x.5, which
+  # %d rejects (it crashed whenever the median site count was not whole).
+  message(sprintf("Selected %d dense regions (median %g sites, median spacing %.0f bp)",
                   nrow(selected), median(selected$n_sites),
                   median(selected$median_spacing)))
   
@@ -798,14 +985,18 @@ inject_spikein_dmrs <- function(dt,
 #' @param low_rate_threshold Below this mean rate, regions get "increase".
 #' @param high_rate_threshold Above this mean rate, regions get "decrease".
 #' @param seed Optional seed (only affects direction = "both").
-#' @return List with `p` (modified group-B rate vector) and `truth` (per-site
-#'   injected effects).
+#' @param target_group Character vector, one of "A"/"B" per row of `regions`:
+#'   which group's true rate carries that region's effect. `NULL` (default)
+#'   puts every effect in group B, the original behaviour.
+#' @return List with `p_A` and `p_B` (the two groups' true-rate vectors), `p`
+#'   (same as `p_B`, kept for older callers) and `truth` (per-site injected
+#'   effects, including the group carrying each).
 #' @noRd
 inject_spikein_parametric <- function(ref_dt, p, regions,
                                       effect_size = 0.15, direction = "auto",
                                       low_rate_threshold = 0.4,
                                       high_rate_threshold = 0.6,
-                                      seed = NULL) {
+                                      seed = NULL, target_group = NULL) {
   stopifnot(
     is.data.table(ref_dt), is.data.table(regions),
     length(p) == nrow(ref_dt),
@@ -813,8 +1004,13 @@ inject_spikein_parametric <- function(ref_dt, p, regions,
   )
   if (!is.null(seed)) set.seed(seed)
 
+  if (is.null(target_group)) target_group <- rep("B", nrow(regions))
+  stopifnot(length(target_group) == nrow(regions),
+            all(target_group %in% c("A", "B")))
+
   chr <- ref_dt$chr
   pos <- ref_dt$pos
+  p_A <- p
   p_B <- p
   truth_list <- list()
 
@@ -843,7 +1039,7 @@ inject_spikein_parametric <- function(ref_dt, p, regions,
     }
 
     new_rates <- pmin(1, pmax(0, old_rates + dir_sign * effect_size))
-    p_B[site_idx] <- new_rates
+    if (target_group[i] == "A") p_A[site_idx] <- new_rates else p_B[site_idx] <- new_rates
 
     truth_list[[i]] <- data.table(
       region_id     = r$region_id,
@@ -853,6 +1049,7 @@ inject_spikein_parametric <- function(ref_dt, p, regions,
       injected_rate = new_rates,
       actual_effect = new_rates - old_rates,
       direction     = ifelse(dir_sign == 1L, "increase", "decrease"),
+      group         = target_group[i],
       mean_baseline = mean_rate
     )
   }
@@ -864,7 +1061,7 @@ inject_spikein_parametric <- function(ref_dt, p, regions,
     if (nrow(truth)) median(abs(truth$actual_effect)) else 0
   ))
 
-  list(p = p_B, truth = truth)
+  list(p = p_B, p_A = p_A, p_B = p_B, truth = truth)
 }
 
 
@@ -878,6 +1075,12 @@ inject_spikein_parametric <- function(ref_dt, p, regions,
 #' sample under-methylates and looks less accessible). Two families are defined,
 #' differing in how the efficiency variation relates to the group (condition)
 #' labels.
+#'
+#' An efficiency of e means the replicate shows, on average across the genome,
+#' a fraction e of the full labeling. How that loss is spread across rate
+#' levels is set by `efficiency_model` (see [.apply_efficiency()]):
+#' "multiplicative" (the default, every site scaled by e) or "logit" (a shift
+#' on the logit scale with the same average loss).
 #'
 #' @section Within-group (specificity controls):
 #' `mild`, `moderate`, `severe`: explicit per-replicate efficiencies with matched

@@ -63,6 +63,8 @@ the selection-biased \code{q_source = "BH"} recomputation.}
 \value{
 data.table of significant DMRs with columns: chr, start, end,
 q_value (the chosen one), mean_diff, n_sites, p_mwu, q_metilene, q_bh.
+Stops with an error if metilene exits non-zero or its log lacks the
+"Number of Tests" line: an incomplete run is never reported as 0 DMRs.
 }
 \description{
 DMRs are kept if their q-value is below \code{q_cutoff}. Two q-values are stored:

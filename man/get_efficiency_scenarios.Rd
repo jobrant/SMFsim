@@ -18,6 +18,13 @@ sample under-methylates and looks less accessible). Two families are defined,
 differing in how the efficiency variation relates to the group (condition)
 labels.
 }
+\details{
+An efficiency of e means the replicate shows, on average across the genome,
+a fraction e of the full labeling. How that loss is spread across rate
+levels is set by \code{efficiency_model} (see \code{\link[=.apply_efficiency]{.apply_efficiency()}}):
+"multiplicative" (the default, every site scaled by e) or "logit" (a shift
+on the logit scale with the same average loss).
+}
 \section{Within-group (specificity controls)}{
 
 \code{mild}, \code{moderate}, \code{severe}: explicit per-replicate efficiencies with matched

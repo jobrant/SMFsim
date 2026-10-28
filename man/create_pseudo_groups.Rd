@@ -11,7 +11,9 @@ create_pseudo_groups(
   mode = c("clone", "split", "parametric"),
   seed = 42,
   dispersion_s = NULL,
-  matched_means = FALSE
+  matched_means = FALSE,
+  noise = NULL,
+  efficiency_model = "multiplicative"
 )
 }
 \arguments{
@@ -39,6 +41,14 @@ null, and false positives measured against it partly reflect the drift
 instead of the method. Set from the scenario definition's
 \code{matched_means} field (see \code{\link[=get_efficiency_scenarios]{get_efficiency_scenarios()}}), not inferred
 from the values.}
+
+\item{noise}{Structured replicate noise for "parametric" mode: \code{NULL}
+(site-independent, the original behaviour) or a list from
+\code{\link[=.noise_from_config]{.noise_from_config()}}. Ignored in "clone" and "split" modes.}
+
+\item{efficiency_model}{"multiplicative" or "logit" (see
+\code{\link[=.apply_efficiency]{.apply_efficiency()}}); "parametric" mode only. Clone mode thins counts
+binomially, which is inherently multiplicative.}
 }
 \value{
 List with elements:
