@@ -13,7 +13,8 @@ create_pseudo_groups(
   dispersion_s = NULL,
   matched_means = FALSE,
   noise = NULL,
-  efficiency_model = "multiplicative"
+  efficiency_model = "multiplicative",
+  broad = NULL
 )
 }
 \arguments{
@@ -49,6 +50,10 @@ from the values.}
 \item{efficiency_model}{"multiplicative" or "logit" (see
 \code{\link[=.apply_efficiency]{.apply_efficiency()}}); "parametric" mode only. Clone mode thins counts
 binomially, which is inherently multiplicative.}
+
+\item{broad}{Optional list \verb{(domains, effect)}: raise group B's TRUE rate
+by \code{effect} inside \code{domains} (from \code{\link[=.select_broad_domains]{.select_broad_domains()}}), a genuine
+broad difference. "parametric" mode only.}
 }
 \value{
 List with elements:

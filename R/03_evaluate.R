@@ -238,7 +238,8 @@ compile_results <- function(all_results, scenario_labels = NULL) {
           TP = NA_integer_, FP = NA_integer_, FN = NA_integer_,
           n_regions = NA_integer_, regions_detected = NA_integer_,
           sensitivity = NA_real_, precision = NA_real_,
-          FDR = NA_real_, F1 = NA_real_, total_called = NA_integer_
+          FDR = NA_real_, F1 = NA_real_, total_called = NA_integer_,
+          domain_calls = NA_integer_, domain_retained = NA_real_
         )
         next
       }
@@ -257,7 +258,11 @@ compile_results <- function(all_results, scenario_labels = NULL) {
         precision = metrics$precision,
         FDR = metrics$FDR,
         F1 = metrics$F1,
-        total_called = metrics$total_called
+        total_called = metrics$total_called,
+        # Broad-difference scenarios only (NA otherwise): calls inside the
+        # genuine domains, and the fraction of domain windows they cover.
+        domain_calls = res$domain$n_calls %||% NA_integer_,
+        domain_retained = res$domain$retained %||% NA_real_
       )
     }
   }
@@ -289,10 +294,73 @@ compile_null_results <- function(null_results) {
       rows[[length(rows) + 1]] <- data.table(
         scenario = scenario,
         method = method,
-        FP = n_fp
+        FP = n_fp,
+        # Broad-difference scenarios only (NA otherwise); FP excludes calls in
+        # the genuine domains.
+        domain_calls = res$domain$n_calls %||% NA_integer_,
+        domain_retained = res$domain$retained %||% NA_real_
       )
     }
   }
 
   return(rbindlist(rows))
+}
+
+
+# Broad-domain scenarios --------------------------------------------------
+
+#' Detectable 2 kb windows inside broad domains
+#'
+#' The units over which domain retention is measured: 2 kb windows that lie in
+#' a broad domain and contain at least `min_sites` sites.
+#'
+#' @param ref_dt data.table of sites (`chr`, `pos`).
+#' @param domains data.table from [.select_broad_domains()].
+#' @param window_bp Window width.
+#' @param min_sites Minimum sites for a window to count.
+#' @return data.table with `chr`, `start`, `end` (keyed).
+#' @keywords internal
+.domain_windows <- function(ref_dt, domains, window_bp = 2000L, min_sites = 10L) {
+  in_dom <- .in_domains(ref_dt, domains)
+  w <- data.table(chr = as.character(ref_dt$chr[in_dom]),
+                  w = ref_dt$pos[in_dom] %/% window_bp)[, .N, by = .(chr, w)]
+  w <- w[N >= min_sites]
+  w[, `:=`(start = w * window_bp, end = w * window_bp + window_bp - 1L)]
+  w <- w[, .(chr, start, end)]
+  setkey(w, chr, start, end)
+  w
+}
+
+
+#' Separate calls inside broad domains from the rest, and score retention
+#'
+#' In a broad-difference scenario, a call overlapping a domain is a genuine
+#' (if broad) difference, not a false positive. Calls within `margin_bp` of a
+#' domain are also set aside: segments straddling a domain edge are not
+#' evidence of a spurious difference.
+#'
+#' @param dmrs Called DMRs (`chr`, `start`, `end`, ...).
+#' @param domains data.table from [.select_broad_domains()].
+#' @param windows data.table from [.domain_windows()].
+#' @param margin_bp Padding around each domain.
+#' @return List: `outside` (calls to evaluate as usual), `n_domain_calls`, and
+#'   `retained` (fraction of `windows` overlapped by a call).
+#' @keywords internal
+.split_domain_calls <- function(dmrs, domains, windows, margin_bp = 2000L) {
+  if (!nrow(dmrs)) {
+    return(list(outside = dmrs, n_domain_calls = 0L, retained = 0))
+  }
+  d <- copy(dmrs)[, `:=`(chr = as.character(chr), .row = .I)]
+  setkey(d, chr, start, end)
+  padded <- copy(domains)[, `:=`(chr = as.character(chr),
+                                 start = start - margin_bp, end = end + margin_bp)]
+  setkey(padded, chr, start, end)
+  inside_rows <- unique(foverlaps(d, padded, nomatch = 0L)$.row)
+  calls_iv <- d[, .(chr, start, end)]
+  setkey(calls_iv, chr, start, end)
+  hit <- foverlaps(windows, calls_iv, nomatch = 0L)
+  n_hit <- nrow(unique(hit[, .(chr, i.start)]))
+  list(outside = dmrs[!seq_len(nrow(dmrs)) %in% inside_rows],
+       n_domain_calls = length(inside_rows),
+       retained = if (nrow(windows)) n_hit / nrow(windows) else NA_real_)
 }

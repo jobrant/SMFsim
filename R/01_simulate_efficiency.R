@@ -435,6 +435,9 @@ simulate_efficiency <- function(dt, efficiency, seed = NULL, dispersion_s = NULL
 #' @param noise Structured replicate noise for "parametric" mode: `NULL`
 #'   (site-independent, the original behaviour) or a list from
 #'   [.noise_from_config()]. Ignored in "clone" and "split" modes.
+#' @param broad Optional list `(domains, effect)`: raise group B's TRUE rate
+#'   by `effect` inside `domains` (from [.select_broad_domains()]), a genuine
+#'   broad difference. "parametric" mode only.
 #' @param efficiency_model "multiplicative" or "logit" (see
 #'   [.apply_efficiency()]); "parametric" mode only. Clone mode thins counts
 #'   binomially, which is inherently multiplicative.
@@ -459,8 +462,13 @@ create_pseudo_groups <- function(replicates,
                                  dispersion_s = NULL,
                                  matched_means = FALSE,
                                  noise = NULL,
-                                 efficiency_model = "multiplicative") {
+                                 efficiency_model = "multiplicative",
+                                 broad = NULL) {
   mode <- match.arg(mode)
+  if (!is.null(broad) && mode != "parametric") {
+    stop("create_pseudo_groups: broad-difference scenarios need mode = ",
+         "'parametric'.", call. = FALSE)
+  }
   stopifnot(is.list(replicates), length(replicates) >= 2)
   
   n_reps <- length(replicates)
@@ -564,6 +572,9 @@ create_pseudo_groups <- function(replicates,
     eff_vals_B <- .resolve_efficiencies(efficiency_B, n_reps, "B")
 
     pooled_p <- .pooled_rate(replicates)
+    # Group B's true rate: the same, plus any genuine broad difference.
+    pooled_p_B <- if (is.null(broad)) pooled_p else
+      .apply_broad_shift(replicates[[1]], pooled_p, broad$domains, broad$effect)
 
     message(sprintf("Parametric mode: %d reps → %d vs %d design (pooled p, s=%s)",
                     n_reps, n_reps, n_reps,
@@ -614,7 +625,7 @@ create_pseudo_groups <- function(replicates,
     names(pseudo_A) <- paste0("PseudoA_", rep_names)
 
     pseudo_B <- mapply(function(dt, eff, i) {
-      .draw_parametric_rep(dt, pooled_p, eff, seed + 1000 + i, dispersion_s, noise,
+      .draw_parametric_rep(dt, pooled_p_B, eff, seed + 1000 + i, dispersion_s, noise,
                            efficiency_model)
     }, replicates, eff_vals_B, seq_along(replicates), SIMPLIFY = FALSE)
     names(pseudo_B) <- paste0("PseudoB_", rep_names)
@@ -1207,6 +1218,43 @@ get_efficiency_scenarios <- function() {
       efficiency_A = c(0.95, 0.92, 0.90, 0.72),
       # Group B: mean 0.6525, range 0.60-0.73
       efficiency_B = c(0.73, 0.65, 0.63, 0.60)
+    ),
+
+    # --- Broad, genuine group differences -----------------------------------
+    # Group B's TRUE rate is raised by `effect` over 1 Mb domains covering
+    # `fraction` of the genome; local spike-ins sit outside them. These measure
+    # what the between-group step costs: its per-bin offset absorbs roughly
+    # fraction x effect of a genome-wide-ish difference and pushes the opposite
+    # shift onto everything else (chr1 prototype, 2026-10-28: at 30% of the
+    # genome, domain retention 0.91 -> 0.44 and 301 opposite-direction false
+    # positives). Efficiencies are the `mild` vectors, so the broad_* scenarios
+    # carry no between-group artifact; broad_30_aligned adds one.
+    broad_10 = list(
+      label = "Broad difference, 10% of genome (+0.15), matched efficiency",
+      efficiency_A = c(0.95, 0.88, 0.87, 0.90),
+      efficiency_B = c(0.86, 0.93, 0.90, 0.91),
+      matched_means = TRUE,
+      broad = list(fraction = 0.10, effect = 0.15, domain_bp = 1e6)
+    ),
+    broad_30 = list(
+      label = "Broad difference, 30% of genome (+0.15), matched efficiency",
+      efficiency_A = c(0.95, 0.88, 0.87, 0.90),
+      efficiency_B = c(0.86, 0.93, 0.90, 0.91),
+      matched_means = TRUE,
+      broad = list(fraction = 0.30, effect = 0.15, domain_bp = 1e6)
+    ),
+    broad_50 = list(
+      label = "Broad difference, 50% of genome (+0.15), matched efficiency",
+      efficiency_A = c(0.95, 0.88, 0.87, 0.90),
+      efficiency_B = c(0.86, 0.93, 0.90, 0.91),
+      matched_means = TRUE,
+      broad = list(fraction = 0.50, effect = 0.15, domain_bp = 1e6)
+    ),
+    broad_30_aligned = list(
+      label = "Broad difference, 30% of genome (+0.15), with aligned bias",
+      efficiency_A = c(0.83, 0.93),   # same ranges as aligned_moderate
+      efficiency_B = c(0.68, 0.78),
+      broad = list(fraction = 0.30, effect = 0.15, domain_bp = 1e6)
     )
   )
 }
@@ -1220,3 +1268,68 @@ get_effect_sizes <- function() {
 }
 
 
+
+
+# Broad-domain scenarios --------------------------------------------------
+
+#' Choose broad domains that differ genuinely between groups
+#'
+#' Splits each chromosome into `domain_bp` windows, keeps windows that contain
+#' sites and do not overlap any region in `exclude` (e.g. spike-in regions),
+#' and samples a `fraction` of them.
+#'
+#' @param ref_dt data.table of sites (`chr`, `pos`).
+#' @param fraction Fraction of eligible windows to make domains.
+#' @param domain_bp Window width.
+#' @param exclude Optional data.table of regions (`chr`, `start`, `end`) that
+#'   domains must avoid.
+#' @param seed Random seed.
+#' @return data.table with `chr`, `start`, `end`, `win`.
+#' @keywords internal
+.select_broad_domains <- function(ref_dt, fraction, domain_bp = 1e6,
+                                  exclude = NULL, seed = 1) {
+  stopifnot(fraction > 0, fraction < 1)
+  domain_bp <- as.integer(domain_bp)
+  cand <- unique(data.table(chr = as.character(ref_dt$chr),
+                            win = ref_dt$pos %/% domain_bp))
+  if (!is.null(exclude) && nrow(exclude)) {
+    ex <- unique(rbindlist(lapply(seq_len(nrow(exclude)), function(i) {
+      data.table(chr = as.character(exclude$chr[i]),
+                 win = seq(exclude$start[i] %/% domain_bp, exclude$end[i] %/% domain_bp))
+    })))
+    cand <- cand[!ex, on = c("chr", "win")]
+  }
+  set.seed(seed)
+  pick <- cand[sort(sample(.N, round(fraction * .N)))]
+  pick[, `:=`(start = win * domain_bp, end = win * domain_bp + domain_bp - 1L)]
+  pick[]
+}
+
+
+#' Which sites lie inside broad domains
+#'
+#' @param ref_dt data.table of sites (`chr`, `pos`).
+#' @param domains data.table from [.select_broad_domains()].
+#' @return Logical vector, one per site.
+#' @keywords internal
+.in_domains <- function(ref_dt, domains) {
+  if (is.null(domains) || !nrow(domains)) return(rep(FALSE, nrow(ref_dt)))
+  domain_bp <- domains$end[1] - domains$start[1] + 1L
+  key_sites <- paste(ref_dt$chr, ref_dt$pos %/% domain_bp)
+  key_sites %in% paste(domains$chr, domains$win)
+}
+
+
+#' Raise the true rate inside broad domains
+#'
+#' @param ref_dt data.table of sites aligned to `p`.
+#' @param p True-rate vector.
+#' @param domains data.table from [.select_broad_domains()].
+#' @param effect Amount added to the true rate (clamped to 1).
+#' @return Modified rate vector.
+#' @keywords internal
+.apply_broad_shift <- function(ref_dt, p, domains, effect) {
+  inside <- .in_domains(ref_dt, domains)
+  p[inside] <- pmin(1, p[inside] + effect)
+  p
+}

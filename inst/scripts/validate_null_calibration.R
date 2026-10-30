@@ -184,7 +184,18 @@ message("CHECK 2: significance path under a TRUE NULL")
 message(strrep("=", 64))
 
 GATE_METHODS <- c("raw", "downsampled")
-TOL <- 10L
+# Total false positives (summed over the three scenarios, genome-wide) the
+# un-normalized arms may produce before the significance path is judged
+# broken. Was 10 while the simulated null had site-independent noise and gave
+# exactly 0. With realistic shared-fragment noise (fragment_rho 0.59), raw
+# calls ~20-30 per scenario: metilene treats neighbouring sites as
+# independent, so correlated read noise makes its FDR mildly optimistic.
+# Verified 2026-10-28 on chr1: raw 3/3/3 with sharing, 0/0/0 without. Real data
+# agree: the balanced split of the real M1 2-vs-2 null gave raw 22 genome-wide.
+# A broken path shows up as hundreds to thousands (819 with the old q-value
+# bug), so 100 still catches it with a wide margin. Expect a FAIL here in the
+# bio_region_sd stress runs: genuine replicate variation produces calls too.
+TOL <- 100L
 
 fp_file <- file.path(base_output, "null_simulation_results.csv")
 if (file.exists(fp_file)) null_dt <- fread(fp_file)

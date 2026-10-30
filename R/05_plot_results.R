@@ -41,7 +41,11 @@ scenario_labels <- c(
   aligned_moderate    = "Aligned Bias (moderate)",
   aligned_strong      = "Aligned Bias (strong)",
   imbalanced_moderate = "Imbalanced Bias (moderate)",
-  imbalanced_strong   = "Imbalanced Bias (strong)"
+  imbalanced_strong   = "Imbalanced Bias (strong)",
+  broad_10            = "Broad Difference (10%)",
+  broad_30            = "Broad Difference (30%)",
+  broad_50            = "Broad Difference (50%)",
+  broad_30_aligned    = "Broad Difference (30%) + Aligned Bias"
 )
 
 #' Order scenario values without dropping unknown ones

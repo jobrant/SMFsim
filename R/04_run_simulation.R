@@ -319,6 +319,19 @@ run_null_simulation <- function(wt_reps, config) {
     sc <- scenarios[[sc_name]]
     message(sprintf("\n--- Scenario: %s ---", sc$label))
 
+    # Broad-difference scenarios: genuine 1 Mb domains in group B. Calls
+    # inside them are not false positives; they are scored as retention.
+    broad <- NULL
+    if (!is.null(sc$broad)) {
+      domains <- .select_broad_domains(wt_reps[[1]], sc$broad$fraction,
+                                       sc$broad$domain_bp, seed = config$seed + 6000)
+      broad <- list(domains = domains, effect = sc$broad$effect,
+                    windows = .domain_windows(wt_reps[[1]], domains))
+      message(sprintf("Broad domains: %d x %.0f kb (%.0f%% of windows), effect +%.2f",
+                      nrow(domains), sc$broad$domain_bp / 1000,
+                      100 * sc$broad$fraction, sc$broad$effect))
+    }
+
     # Create pseudo-groups with efficiency distortion (clone mode: 3 vs 3)
     pseudo <- create_pseudo_groups(
       replicates = wt_reps,
@@ -329,7 +342,8 @@ run_null_simulation <- function(wt_reps, config) {
       dispersion_s = config$dispersion_s,
       matched_means = isTRUE(sc$matched_means),
       noise = .noise_from_config(config),
-      efficiency_model = config$efficiency_model %||% "multiplicative"
+      efficiency_model = config$efficiency_model %||% "multiplicative",
+      broad = broad
     )
 
     # Run all normalization methods
@@ -376,13 +390,23 @@ run_null_simulation <- function(wt_reps, config) {
                      sc_name, m_name, conditionMessage(e)), call. = FALSE)
       })
 
-      # In null simulation, all DMRs are FP
-      null_results[[sc_name]][[m_name]] <- classify_dmrs(
-        called_dmrs = dmrs,
-        truth_regions = NULL
-      )
+      # In null simulation, all DMRs are FP -- except, in a broad-difference
+      # scenario, those inside the genuine domains.
+      dom <- NULL
+      if (!is.null(broad)) {
+        dom <- .split_domain_calls(dmrs, broad$domains, broad$windows)
+        dmrs <- dom$outside
+      }
+      res <- classify_dmrs(called_dmrs = dmrs, truth_regions = NULL)
+      if (!is.null(dom)) {
+        res$domain <- list(n_calls = dom$n_domain_calls, retained = dom$retained)
+      }
+      null_results[[sc_name]][[m_name]] <- res
 
-      message(sprintf("  %s: %d false positive DMRs", m_name, nrow(dmrs)))
+      message(sprintf("  %s: %d false positive DMRs%s", m_name, nrow(dmrs),
+                      if (is.null(dom)) "" else sprintf(
+                        " | broad domains: %d calls, %.2f retained",
+                        dom$n_domain_calls, dom$retained)))
     }
   }
 
@@ -461,7 +485,24 @@ run_spikein_simulation <- function(wt_reps, config) {
   for (sc_name in names(scenarios)) {
     sc <- scenarios[[sc_name]]
     message(sprintf("\n--- Scenario: %s ---", sc$label))
-    
+
+    # Broad-difference scenarios: genuine 1 Mb domains in group B, placed away
+    # from the spike-in regions so local sensitivity is measured cleanly.
+    broad <- NULL
+    if (!is.null(sc$broad)) {
+      if (sim_mode != "parametric") {
+        stop("run_spikein_simulation: broad-difference scenario '", sc_name,
+             "' needs sim_mode = 'parametric'.", call. = FALSE)
+      }
+      domains <- .select_broad_domains(wt_reps[[1]], sc$broad$fraction,
+                                       sc$broad$domain_bp, exclude = spikein_regions,
+                                       seed = config$seed + 6000)
+      broad <- list(domains = domains, effect = sc$broad$effect,
+                    windows = .domain_windows(wt_reps[[1]], domains))
+      message(sprintf("Broad domains: %d x %.0f kb, effect +%.2f, avoiding spike-ins",
+                      nrow(domains), sc$broad$domain_bp / 1000, sc$broad$effect))
+    }
+
     for (effect in config$effect_sizes) {
       result_key <- paste(sc_name, effect, sep = "_effect")
       message(sprintf("\n  Effect size: %.2f", effect))
@@ -510,6 +551,10 @@ run_spikein_simulation <- function(wt_reps, config) {
           seed = config$seed + 2000,
           target_group = spikein_regions$target_group
         )
+        if (!is.null(broad)) {
+          inj$p_B <- .apply_broad_shift(wt_reps[[1]], inj$p_B, broad$domains,
+                                        broad$effect)
+        }
         noise <- .noise_from_config(config)
 
         distorted_A <- mapply(function(dt, eff, i) {
@@ -613,10 +658,21 @@ run_spikein_simulation <- function(wt_reps, config) {
                call. = FALSE)
         })
         
+        # In broad-difference scenarios, calls inside the genuine domains are
+        # neither spike-in hits nor false positives; score them separately.
+        dom <- NULL
+        if (!is.null(broad)) {
+          dom <- .split_domain_calls(dmrs, broad$domains, broad$windows)
+          dmrs <- dom$outside
+        }
         eval_result <- classify_dmrs(
           called_dmrs = dmrs,
           truth_regions = spikein_regions
         )
+        if (!is.null(dom)) {
+          eval_result$domain <- list(n_calls = dom$n_domain_calls,
+                                     retained = dom$retained)
+        }
         
         all_results[[result_key]][[m_name]] <- eval_result
         metrics <- compute_metrics(eval_result$summary)
