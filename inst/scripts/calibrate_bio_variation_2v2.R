@@ -37,6 +37,17 @@
 #
 # Outputs: bio_2v2_fp.csv (one row per source x split x arm) and
 # replicate_efficiency.csv. metilene_input/ is deleted after each run.
+#
+# Finding, M1 chr1 (2026-11-06, results/bio_variation_2v2_chr1), FP DMRs
+# raw / SMFnorm:
+#                    real      sd 0     sd 0.1    sd 0.25    sd 0.5
+#   N2+N4 vs N3+N5  918/0    712/0    889/1    1292/78   2329/895   efficiency split
+#   N2+N5 vs N3+N4    1/2     16/11    20/12    162/82   1074/1038  balanced split
+#   N2+N3 vs N4+N5  234/366   14/7     15/22     95/108  1066/1029  run split
+# bio_region_sd is at most ~0.1: 0.25 already overshoots both calibration
+# splits ~5-80x. The default 0 stays; 0.25 / 0.5 are stress tests. The run
+# split's real excess (and SMFnorm making it worse) is the sequencing-run
+# effect, which no bio_region_sd reproduces.
 
 if (requireNamespace("devtools", quietly = TRUE) && file.exists("SMFsim/DESCRIPTION")) {
     suppressMessages(devtools::load_all("SMFsim/", quiet = TRUE))
