@@ -40,8 +40,10 @@ mkdir -p logs
 
 # Guard against stitching an incomplete grid. Expected cell count must match
 # the --array range used for the sweep.
-EXPECTED_CELLS=12
-SWEEP_DIR=results/alpha_sweep               # results/alpha_sweep_fast if FAST_TUNE=TRUE
+EXPECTED_CELLS=6
+# Must match run_alpha_sweep.R; both read SMFSIM_OUTPUT (results/alpha_sweep_fast
+# if FAST_TUNE=TRUE).
+SWEEP_DIR=${SMFSIM_OUTPUT:-results/alpha_sweep_2026-11}
 
 if [ -d "$SWEEP_DIR" ]; then
     FOUND=$(find "$SWEEP_DIR" -mindepth 2 -maxdepth 2 \

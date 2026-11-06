@@ -16,10 +16,15 @@
 # whether the optimum is SEPARABLE (best within_alpha the same at every
 # between_alpha). If it is, you can go back to quoting two 1-D sweeps.
 #
-# Direction of the alphas (verified empirically): LOWER alpha = STRONGER
-# correction. between_alpha -> 0.1 pulls the groups to equal, removing the
-# artifact AND the spike signal; -> 0.9 retains more spike signal but leaves
-# more residual artifact. The goal is the highest alpha that keeps null FP low.
+# What the alphas do (corrected 2026-10-28; the earlier reading here was
+# wrong). Within each rate bin SMFnorm sets x' = m_bar + alpha * (x - m_s): the
+# sample's bin mean m_s is replaced by the common mean m_bar -- that offset
+# removal IS the efficiency correction and happens in full at ANY alpha -- and
+# alpha only scales each site's deviation from its sample's bin mean. alpha = 1
+# is full correction with no shrinkage, not "no correction". alpha < 1 shrinks
+# mostly noise, deflating variance, which inflated false positives on the real
+# M1 2v2 null (validate_real_null.R). This sweep tests that in simulation:
+# does anything below 1.0 buy sensitivity without costing specificity?
 #
 # Only SMFnorm is run (no other method depends on alpha); compare against the
 # raw/downsampled baselines from the main bias run.
@@ -33,7 +38,14 @@
 # Usage (from the package root):
 #   Rscript inst/scripts/run_alpha_sweep.R
 # SLURM array (one CELL per task, 1..nrow(GRID)):
-#   sbatch --array=1-12 ... ; then one plain run to stitch + plot.
+#   sbatch --array=1-6 ... ; then one plain run to stitch + plot.
+#
+# Environment variables (optional):
+#   SMFSIM_OUTPUT        output directory (default results/alpha_sweep_2026-11).
+#                        Never point it at an older sweep: resume reuses any
+#                        cell whose CSVs exist, whatever settings made them.
+#   SMFSIM_KEEP_METILENE_INPUT=1   keep each run's metilene_input/ (~1 GB per
+#                        run; deleted by default once the cell is scored).
 
 # Load SMFsim from SOURCE when it is reachable, so a run always uses the code
 # in this checkout: from the package root (DESCRIPTION) or from the manuscript
@@ -56,15 +68,15 @@ config$data_dir      <- "data/allc_methylseq4.2_clip5"
 config$sample_sheet  <- "data/sample_sheet.csv"
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
-base_output          <- "results/alpha_sweep"
+# results/alpha_sweep holds the 2026-10-02 sweep (old noise model, s = 26, no
+# alpha = 1.0); a new directory keeps resume from reusing its cells.
+base_output          <- Sys.getenv("SMFSIM_OUTPUT", "results/alpha_sweep_2026-11")
 
 # The 2-D grid. Keep it coarse: the point is to locate the optimum and test
-# separability, not to resolve it to two decimal places.
-# WITHIN_GRID  <- seq(0.1, 0.9, 0.2)   # 0.1 0.3 0.5 0.7 0.9
-# BETWEEN_GRID <- c(0.5, 0.7, 0.9)
-
-WITHIN_GRID  <- c(0.3, 0.5, 0.7)   
-BETWEEN_GRID <- c(0.8, 0.9, 0.95, 1.0)
+# separability, not to resolve it to two decimal places. 1.0/1.0 is the
+# candidate default; the earlier grids never included within_alpha = 1.0.
+WITHIN_GRID  <- c(0.5, 0.75, 1.0)
+BETWEEN_GRID <- c(0.9, 1.0)
 
 
 
@@ -184,6 +196,15 @@ for (i in seq_len(nrow(GRID))) {
         wt_reps <- get_wt_reps()
         null <- run_null_simulation(wt_reps, cfg)
         spk  <- run_spikein_simulation(wt_reps, cfg)
+
+        # Scoring reads metilene_dmrs.bed only; the inputs are ~95% of the
+        # disk use (the 2026-10 sweeps kept 1.4 TB of them) and regenerable.
+        if (!identical(Sys.getenv("SMFSIM_KEEP_METILENE_INPUT"), "1")) {
+            inputs <- grep("/metilene_input$",
+                           list.dirs(cfg$output_dir, recursive = TRUE), value = TRUE)
+            unlink(inputs, recursive = TRUE)
+            message(sprintf("  removed %d metilene_input directories", length(inputs)))
+        }
     }
     null[, `:=`(within_alpha = w, between_alpha = b)]
     spk[,  `:=`(within_alpha = w, between_alpha = b)]
@@ -219,28 +240,34 @@ message("  spikein -> ", spk_csv)
 # The question the grid exists to answer: does the best within_alpha depend on
 # between_alpha? If not, the two can be tuned independently and reported as two
 # 1-D sweeps. Specificity comes first -- a cell is only eligible if its null
-# false-positive count is acceptable.
-NULL_FP_TOL <- 0
+# false-positive count is acceptable: at most NULL_FP_TOL in EVERY scenario.
+# Zero is unreachable under the calibrated noise model (raw with no bias gives
+# ~20-30 per scenario genome-wide), so this matches TOL in
+# validate_null_calibration.R instead.
+NULL_FP_TOL <- 100L
 
 message("\n=== Separability of the two alphas ===")
 tryCatch({
-    fp <- null_dt[, .(null_FP = sum(FP, na.rm = TRUE)),
+    fp <- null_dt[, .(null_FP = sum(FP, na.rm = TRUE),
+                      max_scenario_FP = max(FP, na.rm = TRUE)),
                   by = .(within_alpha, between_alpha)]
     perf <- spk_dt[, .(mean_F1 = mean(F1, na.rm = TRUE),
                        mean_sens = mean(sensitivity, na.rm = TRUE),
                        min_prec = min(precision, na.rm = TRUE)),
                    by = .(within_alpha, between_alpha)]
     cells <- merge(perf, fp, by = c("within_alpha", "between_alpha"), all = TRUE)
-    cells[is.na(null_FP), null_FP := 0L]
     setorder(cells, between_alpha, within_alpha)
 
-    message("\nPer-cell summary (null_FP first -- specificity gates eligibility):")
+    message("\nPer-cell summary (null FP first -- specificity gates eligibility):")
     print(cells)
 
-    eligible <- cells[null_FP <= NULL_FP_TOL]
+    if (anyNA(cells$max_scenario_FP)) {
+        stop("some cells have no null results; the grid is incomplete")
+    }
+    eligible <- cells[max_scenario_FP <= NULL_FP_TOL]
     if (nrow(eligible) == 0) {
-        message("\n!! No cell met null_FP <= ", NULL_FP_TOL,
-                ". Relax NULL_FP_TOL or inspect the null directly.")
+        message("\n!! No cell kept null FP <= ", NULL_FP_TOL,
+                " in every scenario. Inspect the null directly.")
     } else {
         best_per_b <- eligible[, .SD[which.max(mean_F1)], by = between_alpha]
         message("\nBest within_alpha at each between_alpha:")
