@@ -13,6 +13,8 @@ run_spikein_simulation(wt_reps, config)
 }
 \value{
 data.table of spike-in results by scenario × effect_size × method.
+Its \code{"by_density"} attribute, also written to \code{spikein_by_density.csv},
+holds region-level sensitivity per spike-in density stratum.
 }
 \description{
 Run the spike-in simulation (sensitivity assessment)

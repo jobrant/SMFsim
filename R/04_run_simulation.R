@@ -42,6 +42,13 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
     region_width_bp   = 2000,
     max_median_spacing = 200,
     min_sites = 10, 
+    # Where spike-in regions are placed. "stratified" samples regions evenly
+    # from spikein_density_strata strata of site density (default 3: low,
+    # medium, high), and sensitivity is also reported per stratum. "densest"
+    # is the original design: the densest regions genome-wide, where every
+    # method detected nearly everything.
+    spikein_density = "stratified",
+    spikein_density_strata = 3L,
     wt_group_id       = "PrEC",   # normal prostate epithelial cells (3 reps)
     seed              = 42,
     # "ComBatMet" = ComBatMet_balanced. Add "ComBatMet_median" to also run the
@@ -126,7 +133,7 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
   int_keys  <- c("seed", "n_spikein_regions", "region_width_bp",
                  "metilene_min_cpg", "metilene_max_dist", "min_coverage",
                  "metilene_mtc", "min_sites", "max_median_spacing",
-                 "fragment_bp", "bio_region_bp")
+                 "fragment_bp", "bio_region_bp", "spikein_density_strata")
   num_keys  <- c("metilene_min_diff", "dispersion_s", "metilene_qval",
                  "within_alpha", "between_alpha", "metilene_min_effect",
                  "fragment_rho", "bio_region_sd")
@@ -187,6 +194,14 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
   if (!config$spikein_groups %in% c("both", "B")) {
     stop("parse_args: --spikein_groups must be 'both' or 'B', got '",
          config$spikein_groups, "'.", call. = FALSE)
+  }
+  if (!config$spikein_density %in% c("stratified", "densest")) {
+    stop("parse_args: --spikein_density must be 'stratified' or 'densest', got '",
+         config$spikein_density, "'.", call. = FALSE)
+  }
+  if (config$spikein_density_strata < 1) {
+    stop("parse_args: --spikein_density_strata must be >= 1, got ",
+         config$spikein_density_strata, ".", call. = FALSE)
   }
   if (config$fragment_rho < 0 || config$fragment_rho >= 1) {
     stop("parse_args: --fragment_rho must be in [0, 1), got ",
@@ -432,6 +447,8 @@ run_null_simulation <- function(wt_reps, config) {
 #' @param wt_reps Named list of WT replicate data.tables.
 #' @param config Configuration list.
 #' @return data.table of spike-in results by scenario × effect_size × method.
+#'   Its `"by_density"` attribute, also written to `spikein_by_density.csv`,
+#'   holds region-level sensitivity per spike-in density stratum.
 #' @export
 run_spikein_simulation <- function(wt_reps, config) {
   message("\n", strrep("=", 60))
@@ -447,15 +464,29 @@ run_spikein_simulation <- function(wt_reps, config) {
 
   # Select spike-in regions once (same regions for all scenarios)
   ref_dt <- wt_reps[[1]]
-  spikein_regions <- select_dense_spikein_regions(
-    dt = ref_dt,
-    n_regions = config$n_spikein_regions %||% 300,
-    region_width_bp = config$region_width_bp %||% 2000,
-    min_sites = config$min_sites %||% 10,
-    max_median_spacing = config$max_median_spacing %||% 200,
-    seed = config$seed + 1000
-  )
-  
+  spikein_density <- config$spikein_density %||% "stratified"
+  if (identical(spikein_density, "stratified")) {
+    spikein_regions <- select_stratified_spikein_regions(
+      dt = ref_dt,
+      n_regions = config$n_spikein_regions %||% 300,
+      region_width_bp = config$region_width_bp %||% 2000,
+      min_sites = config$min_sites %||% 10,
+      max_median_spacing = config$max_median_spacing %||% 200,
+      n_strata = config$spikein_density_strata %||% 3L,
+      seed = config$seed + 1000
+    )
+  } else {
+    spikein_regions <- select_dense_spikein_regions(
+      dt = ref_dt,
+      n_regions = config$n_spikein_regions %||% 300,
+      region_width_bp = config$region_width_bp %||% 2000,
+      min_sites = config$min_sites %||% 10,
+      max_median_spacing = config$max_median_spacing %||% 200,
+      seed = config$seed + 1000
+    )
+    spikein_regions[, density_stratum := "densest"]
+  }
+
   # Fix data.table internal reference
   spikein_regions <- spikein_regions[]
 
@@ -703,6 +734,17 @@ run_spikein_simulation <- function(wt_reps, config) {
   out_path <- file.path(config$output_dir, "spikein_simulation_results.csv")
   fwrite(spikein_summary, out_path)
   message(sprintf("\nSpike-in simulation results saved to: %s", out_path))
+
+  # Sensitivity by density stratum of the spike-in regions
+  by_density <- compile_density_results(all_results, spikein_regions)
+  if (nrow(by_density)) {
+    by_density[, c("efficiency_scenario", "effect_info") :=
+                 tstrsplit(scenario, "_effect", fixed = TRUE)]
+    by_density[, effect_size := as.numeric(effect_info)]
+    by_density[, effect_info := NULL]
+    fwrite(by_density, file.path(config$output_dir, "spikein_by_density.csv"))
+  }
+  attr(spikein_summary, "by_density") <- by_density
   
   return(spikein_summary)
 }

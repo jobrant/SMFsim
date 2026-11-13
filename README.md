@@ -107,6 +107,38 @@ SMFsim currently compares these methods:
 Both batch labels are derived from the simulated efficiencies, which an analyst
 would not have. See `.efficiency_batch()`.
 
+## Spike-in Placement and Seeds
+
+### Density strata
+
+Spike-in regions are sampled evenly from strata of site density
+(`spikein_density = "stratified"`, the default, with
+`spikein_density_strata = 3`: low, medium, high). Each chromosome is tiled into
+`region_width_bp` windows; windows with at least `min_sites` sites and a median
+spacing of at most `max_median_spacing` are ranked by site count and cut into
+equal-sized strata. Sensitivity is reported overall
+(`spikein_simulation_results.csv`) and per stratum (`spikein_by_density.csv`).
+
+`spikein_density = "densest"` gives the original design, which placed every
+spike-in in the densest regions genome-wide. Those regions are the easiest to
+call, so every method detected nearly all of them.
+
+### Seeds
+
+A seed changes the replicate noise, the efficiencies of range-based scenarios,
+the spike-in regions and which group carries each effect. To repeat a run over
+seeds in one R session:
+
+```r
+res <- run_simulation_seeds(wt_reps, config, seeds = 42:46)
+res$across_seeds$spikein   # mean, sd, min, max and n_seeds per result
+```
+
+Each seed is written to `<output_dir>/seed_<n>/`. For genome-wide runs, run one
+seed per job with `inst/slurm/bias_experiment_seeds.sbatch` (which sets
+`SMFSIM_SEED` and `SMFSIM_OUTPUT` for `run_bias_experiment.R`) and combine them
+afterwards with `inst/scripts/summarize_seeds.R`, or `combine_seed_dirs()`.
+
 ## Installation
 
 ```r

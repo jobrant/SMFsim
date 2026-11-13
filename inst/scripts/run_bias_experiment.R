@@ -52,7 +52,17 @@ MAKE_FIGURES       <- TRUE   # generate manuscript figures after each block
 config$sim_mode          <- "parametric"            # independent group construction
 config$dispersion_s      <- 128  # calibrate_replicate_noise.R, M1 (2026-10-28); was 26
 config$effect_sizes      <- c(0.10, 0.15, 0.20, 0.30)
-config$seed              <- 42
+# One seed per run. Set SMFSIM_SEED to run another (and SMFSIM_OUTPUT to keep
+# its results apart). The seeds array job in inst/slurm/ runs several, and
+# inst/scripts/summarize_seeds.R combines them.
+seed_env <- trimws(Sys.getenv("SMFSIM_SEED"))
+config$seed <- if (nzchar(seed_env)) {
+    s <- suppressWarnings(as.integer(seed_env))
+    if (is.na(s)) stop("SMFSIM_SEED must be a whole number, got '", seed_env, "'.",
+                       call. = FALSE)
+    s
+} else 42L
+message("Seed: ", config$seed)
 config$standard_chr_only <- TRUE
 config$metilene_min_cpg  <- 10
 config$methods           <- c("raw", "downsampled", "SMFnorm",

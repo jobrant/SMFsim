@@ -18,11 +18,13 @@ If NULL, all called DMRs are treated as FP (null simulation).}
 List with:
 \item{classification}{data.table with each called DMR labeled TP or FP}
 \item{fn_regions}{data.table of spike-in regions not recovered (FN)}
+\item{detected_regions}{\code{region_id} of every spike-in region overlapped
+by at least one call}
 \item{summary}{Named vector: TP, FP, FN counts}
 }
 \description{
 A called DMR is a true positive (TP) if it overlaps a spike-in region by
-at least \code{min_overlap_frac} of the smaller region's width.
+at least \code{min_overlap_bp} base pairs.
 Spike-in regions without any overlapping DMR call are false negatives (FN).
 Called DMRs without any overlapping spike-in are false positives (FP).
 }

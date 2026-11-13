@@ -839,6 +839,89 @@ select_dense_spikein_regions <- function(dt,
 }
 
 
+#' Select spike-in regions across a range of site densities
+#'
+#' [select_dense_spikein_regions()] takes the densest regions in the genome,
+#' which is where a DMR is easiest to call: with 300 regions genome-wide they
+#' held a median of 156 sites each, against the 10 metilene needs, and every
+#' method detected nearly all of them. This selector samples regions from
+#' several density strata instead, so sensitivity is measured over the range
+#' of regions a real analysis meets.
+#'
+#' Each chromosome is tiled into `region_width_bp` windows. A window is
+#' eligible if it holds at least `min_sites` sites with a median spacing of at
+#' most `max_median_spacing`. Eligible windows are ranked by site count and cut
+#' into `n_strata` equal-sized strata, and the same number of regions is drawn
+#' at random from each. A region runs from the first to the last site of its
+#' window, so regions never overlap.
+#'
+#' @param dt Reference data.table (any sample; needs `chr`, `pos`).
+#' @param n_regions Number of regions to select, split evenly across strata.
+#' @param region_width_bp Window width in base pairs.
+#' @param min_sites Minimum sites for a window to be eligible.
+#' @param max_median_spacing Maximum median inter-site spacing in bp.
+#' @param n_strata Number of density strata (default 3: low, medium, high).
+#' @param seed Random seed; different seeds select different regions.
+#' @return data.table with `region_id`, `chr`, `start`, `end`, `n_sites`,
+#'   `median_spacing` and `density_stratum`.
+#' @noRd
+select_stratified_spikein_regions <- function(dt,
+                                              n_regions = 300,
+                                              region_width_bp = 2000,
+                                              min_sites = 10,
+                                              max_median_spacing = 200,
+                                              n_strata = 3,
+                                              seed = 123) {
+  n_strata <- as.integer(n_strata)
+  stopifnot(n_strata >= 1L, n_regions >= n_strata)
+  region_width_bp <- as.integer(region_width_bp)
+
+  sites <- data.table(chr = as.character(dt$chr), pos = as.integer(dt$pos))
+  setorder(sites, chr, pos)
+  win <- sites[, .(start = pos[1L], end = pos[.N], n_sites = .N,
+                   median_spacing = if (.N > 1L) as.numeric(stats::median(diff(pos)))
+                                    else NA_real_),
+               by = .(chr, w = pos %/% region_width_bp)]
+  win <- win[n_sites >= min_sites & !is.na(median_spacing) &
+               median_spacing <= max_median_spacing]
+  if (nrow(win) < n_regions) {
+    stop(sprintf(paste0(
+      "select_stratified_spikein_regions: only %d eligible windows for %d ",
+      "regions. Lower n_spikein_regions or min_sites, or raise ",
+      "max_median_spacing."), nrow(win), n_regions), call. = FALSE)
+  }
+
+  # Equal-sized strata by site count; ties are split by genomic order.
+  setorder(win, n_sites, chr, start)
+  win[, stratum_i := ceiling(seq_len(.N) * n_strata / .N)]
+  stratum_names <- if (n_strata == 3L) c("low", "medium", "high")
+                   else paste0("D", seq_len(n_strata))
+
+  per_stratum <- rep(n_regions %/% n_strata, n_strata)
+  extra <- n_regions %% n_strata
+  if (extra > 0L) per_stratum[seq_len(extra)] <- per_stratum[seq_len(extra)] + 1L
+
+  set.seed(seed)
+  selected <- rbindlist(lapply(seq_len(n_strata), function(k) {
+    pool <- win[stratum_i == k]
+    pool[sort(sample.int(nrow(pool), per_stratum[k]))]
+  }))
+  selected[, density_stratum := stratum_names[stratum_i]]
+  setorder(selected, chr, start)
+  selected[, region_id := seq_len(.N)]
+  selected <- selected[, .(region_id, chr, start, end, n_sites, median_spacing,
+                           density_stratum)]
+
+  ranges <- win[, .(lo = min(n_sites), hi = max(n_sites)), keyby = stratum_i]
+  message(sprintf(
+    "Selected %d spike-in regions from %d eligible windows, by density: %s",
+    nrow(selected), nrow(win),
+    paste(sprintf("%s %d (%d-%d sites)", stratum_names, per_stratum,
+                  ranges$lo, ranges$hi), collapse = "; ")))
+  selected[]
+}
+
+
 # Spike-in DMR injection --------------------------------------------------
 
 #' Inject spike-in DMRs into a sample

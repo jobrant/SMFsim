@@ -9,7 +9,7 @@
 #' Classify called DMRs against ground-truth spike-in regions
 #'
 #' A called DMR is a true positive (TP) if it overlaps a spike-in region by
-#' at least `min_overlap_frac` of the smaller region's width.
+#' at least `min_overlap_bp` base pairs.
 #' Spike-in regions without any overlapping DMR call are false negatives (FN).
 #' Called DMRs without any overlapping spike-in are false positives (FP).
 #'
@@ -20,6 +20,8 @@
 #' @return List with:
 #'   \item{classification}{data.table with each called DMR labeled TP or FP}
 #'   \item{fn_regions}{data.table of spike-in regions not recovered (FN)}
+#'   \item{detected_regions}{`region_id` of every spike-in region overlapped
+#'     by at least one call}
 #'   \item{summary}{Named vector: TP, FP, FN counts}
 classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1) {
 
@@ -35,6 +37,7 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
     return(list(
       classification = classification,
       fn_regions = data.table(),
+      detected_regions = integer(0),
       summary = c(TP = 0L, FP = n_called, FN = 0L,
                   n_regions = 0L, regions_detected = 0L)
     ))
@@ -45,20 +48,25 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
     return(list(
       classification = data.table(),
       fn_regions = truth_regions,
+      detected_regions = integer(0),
       summary = c(TP = 0L, FP = 0L, FN = nrow(truth_regions),
                   n_regions = nrow(truth_regions), regions_detected = 0L)
     ))
   }
 
-  # Use GenomicRanges for overlap detection if available, otherwise interval logic
-  if (requireNamespace("GenomicRanges", quietly = TRUE) &&
-      requireNamespace("IRanges", quietly = TRUE)) {
-    result <- .classify_with_granges(called_dmrs, truth_regions, min_overlap_bp)
-  } else {
-    result <- .classify_with_intervals(called_dmrs, truth_regions, min_overlap_bp)
+  # One implementation only. A second, interval-based fallback used to run
+  # when GenomicRanges was missing; it counted overlap width differently and
+  # matched each call to at most one region, so the same calls scored
+  # differently depending on which packages were installed (on one random
+  # input: 132 vs 113 TP calls, 107 vs 87 regions detected).
+  if (!requireNamespace("GenomicRanges", quietly = TRUE) ||
+      !requireNamespace("IRanges", quietly = TRUE) ||
+      !requireNamespace("S4Vectors", quietly = TRUE)) {
+    stop("classify_dmrs: packages 'GenomicRanges', 'IRanges' and 'S4Vectors' ",
+         "are required. Install them with BiocManager::install('GenomicRanges').",
+         call. = FALSE)
   }
-
-  return(result)
+  .classify_with_granges(called_dmrs, truth_regions, min_overlap_bp)
 }
 
 
@@ -76,8 +84,16 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
   )
 
   # Find overlaps
-  hits <- GenomicRanges::findOverlaps(called_gr, truth_gr,
-                                       minoverlap = min_overlap_bp)
+  # Calls on a chromosome with no truth region are ordinary false positives;
+  # GenomicRanges warns when the two sets share no chromosome at all.
+  hits <- withCallingHandlers(
+    GenomicRanges::findOverlaps(called_gr, truth_gr,
+                                minoverlap = min_overlap_bp),
+    warning = function(w) {
+      if (grepl("no sequence levels in common", conditionMessage(w))) {
+        invokeRestart("muffleWarning")
+      }
+    })
 
   # Classify called DMRs
   classification <- copy(called_dmrs)
@@ -114,57 +130,7 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
   return(list(
     classification = classification,
     fn_regions = fn_regions,
-    summary = summary_vec
-  ))
-}
-
-
-#' Classify DMRs using simple interval overlap (fallback)
-#' @keywords internal
-.classify_with_intervals <- function(called_dmrs, truth_regions, min_overlap_bp) {
-  classification <- copy(called_dmrs)
-  classification[, label := "FP"]
-  classification[, matched_region := NA_integer_]
-
-  truth_matched <- rep(FALSE, nrow(truth_regions))
-
-  for (i in seq_len(nrow(called_dmrs))) {
-    c_chr <- called_dmrs$chr[i]
-    c_start <- called_dmrs$start[i]
-    c_end <- called_dmrs$end[i]
-
-    for (j in seq_len(nrow(truth_regions))) {
-      if (truth_matched[j] && classification$label[i] == "TP") next
-
-      t_chr <- truth_regions$chr[j]
-      t_start <- truth_regions$start[j]
-      t_end <- truth_regions$end[j]
-
-      if (c_chr != t_chr) next
-
-      overlap <- min(c_end, t_end) - max(c_start, t_start)
-      if (overlap >= min_overlap_bp) {
-        classification[i, label := "TP"]
-        classification[i, matched_region := truth_regions$region_id[j]]
-        truth_matched[j] <- TRUE
-        break
-      }
-    }
-  }
-
-  fn_regions <- truth_regions[!truth_matched]
-
-  summary_vec <- c(
-    TP = sum(classification$label == "TP"),
-    FP = sum(classification$label == "FP"),
-    FN = sum(!truth_matched),
-    n_regions = nrow(truth_regions),
-    regions_detected = sum(truth_matched)
-  )
-
-  return(list(
-    classification = classification,
-    fn_regions = fn_regions,
+    detected_regions = truth_regions$region_id[sort(matched_truth_idx)],
     summary = summary_vec
   ))
 }
@@ -304,6 +270,34 @@ compile_null_results <- function(null_results) {
   }
 
   return(rbindlist(rows))
+}
+
+
+#' Region-level sensitivity by spike-in density stratum
+#'
+#' @param all_results List (by scenario x effect key) of lists (by method) of
+#'   [classify_dmrs()] results.
+#' @param regions Spike-in regions with `region_id` and `density_stratum`.
+#' @return data.table with one row per scenario x method x stratum:
+#'   `n_regions`, `regions_detected`, `sensitivity`. Empty if `regions` has no
+#'   `density_stratum` column.
+compile_density_results <- function(all_results, regions) {
+  if (!"density_stratum" %in% names(regions)) return(data.table())
+  rows <- list()
+  for (scenario in names(all_results)) {
+    for (method in names(all_results[[scenario]])) {
+      res <- all_results[[scenario]][[method]]
+      if (is.null(res)) next
+      detected <- res$detected_regions
+      per <- regions[, .(n_regions = .N,
+                         regions_detected = sum(region_id %in% detected)),
+                     by = density_stratum]
+      per[, sensitivity := round(regions_detected / n_regions, 4)]
+      rows[[length(rows) + 1L]] <- cbind(
+        data.table(scenario = scenario, method = method), per)
+    }
+  }
+  rbindlist(rows)
 }
 
 
