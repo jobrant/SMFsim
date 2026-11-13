@@ -329,36 +329,55 @@ run_SMFnorm <- function(pseudo_groups,
 #' Derive a ComBat batch label from per-replicate enzyme efficiency
 #'
 #' ComBat requires a discrete batch variable, but the artifact SMFsim simulates
-#' is a continuous per-replicate efficiency. Splitting replicates at the median
-#' efficiency gives the batch label an analyst could plausibly construct from
-#' QC (high- vs low-efficiency samples).
-#'
-#' The split is deliberately scenario-dependent, and that is the point:
-#' \itemize{
-#'   \item `imbalanced_*` scenarios use explicit efficiencies that interleave
-#'     across groups (A = 3 high / 1 low, B = 1 high / 3 low), so the split
-#'     crosses the group boundary and ComBat has a separable artifact to
-#'     remove. They must be explicit: sampled from barely-overlapping ranges,
-#'     the split was usually perfectly confounded anyway.
-#'   \item `aligned_*` scenarios use non-overlapping ranges, so the split
-#'     reproduces the group labels exactly. Batch is then perfectly confounded
-#'     with group and no batch-correction method can separate artifact from
-#'     biology.
+#' is a continuous per-replicate efficiency. Two rules turn the simulated
+#' efficiencies into a two-level label (`high_eff` / `low_eff`). Both use the
+#' true simulated efficiencies, which an analyst would not have; they stand in
+#' for two kinds of experimental design.
+#' \describe{
+#'   \item{"balanced" (default)}{Within EACH group, the more efficient half of
+#'     the replicates is `high_eff`. Every batch holds the same number of
+#'     replicates from each group, as in an experiment that processes equal
+#'     numbers of each condition per batch. This is the design ComBat is built
+#'     for. Batch is never confounded with group, so the method is always
+#'     applicable on that count; in turn it cannot remove an efficiency
+#'     difference that lines up with group. It needs four or more replicates
+#'     per group: with three, one batch holds only two samples, which
+#'     ComBat_met cannot fit, and [run_combatmet()] reports the arm as
+#'     inapplicable.}
+#'   \item{"median"}{Replicates above the median efficiency of ALL replicates
+#'     are `high_eff`. Batch membership then depends on group whenever the
+#'     groups differ in efficiency: a partially confounded design in the
+#'     `imbalanced_*` and `severe` scenarios (A = 3 high / 1 low, B = 1 high /
+#'     3 low, or the reverse), and a perfectly confounded one in `aligned_*`,
+#'     where [run_combatmet()] refuses to run. Within a batch the two groups
+#'     can differ in efficiency; with group protected in the model ComBat keeps
+#'     that difference as biology. In the matched-mean `severe` null this gave
+#'     7,791 false-positive DMRs against 11 with balanced labels
+#'     (diagnose_combatmet_batch_labels.R, 2026-11-13).}
 #' }
 #'
 #' @param params `params` element of a [create_pseudo_groups()] result.
 #' @param n_A,n_B Replicate counts for the two pseudo-groups.
+#' @param rule "balanced" (default) or "median".
 #' @return Factor of batch labels, PseudoA replicates first then PseudoB.
 #' @keywords internal
-.efficiency_batch <- function(params, n_A, n_B) {
-  eff <- c(params$efficiency_A, params$efficiency_B)
-  if (length(eff) != n_A + n_B) {
-    stop("run_combatmet: params$efficiency_A/B hold ", length(eff),
-         " values but there are ", n_A + n_B, " replicates. Pass an explicit ",
-         "`batch` instead.", call. = FALSE)
+.efficiency_batch <- function(params, n_A, n_B, rule = c("balanced", "median")) {
+  rule <- match.arg(rule)
+  eff_A <- params$efficiency_A
+  eff_B <- params$efficiency_B
+  if (length(eff_A) != n_A || length(eff_B) != n_B) {
+    stop("run_combatmet: params$efficiency_A/B hold ", length(eff_A), " and ",
+         length(eff_B), " values but there are ", n_A, " and ", n_B,
+         " replicates. Pass an explicit `batch` instead.", call. = FALSE)
   }
-  factor(ifelse(eff > stats::median(eff), "high_eff", "low_eff"),
-         levels = c("low_eff", "high_eff"))
+  eff <- c(eff_A, eff_B)
+  high <- if (rule == "median") {
+    eff > stats::median(eff)
+  } else {
+    top_half <- function(e) rank(-e, ties.method = "first") <= length(e) %/% 2
+    c(top_half(eff_A), top_half(eff_B))
+  }
+  factor(ifelse(high, "high_eff", "low_eff"), levels = c("low_eff", "high_eff"))
 }
 
 
@@ -369,7 +388,7 @@ run_SMFnorm <- function(pseudo_groups,
 #'
 #' The biological group is passed as `group` with `full_mod = TRUE` so it enters
 #' the model and is PROTECTED; only batch effects are removed. Batch defaults to
-#' an efficiency stratum from [.efficiency_batch()].
+#' an efficiency stratum from [.efficiency_batch()], built by `batch_rule`.
 #'
 #' Note: an earlier version of this function hand-rolled a "mean-only"
 #' adjustment that subtracted each group's own mean and added the grand mean.
@@ -379,9 +398,14 @@ run_SMFnorm <- function(pseudo_groups,
 #'
 #' @param pseudo_groups List from [create_pseudo_groups()].
 #' @param batch Optional explicit batch factor, one entry per replicate ordered
-#'   PseudoA then PseudoB. Defaults to the median-efficiency split.
+#'   PseudoA then PseudoB. Overrides `batch_rule`.
+#' @param batch_rule How to derive the batch label from the simulated
+#'   efficiencies when `batch` is not given: "balanced" (default) or "median".
+#'   See [.efficiency_batch()].
 #' @return Named list with method = "ComBatMet" and normalized split data.
-run_combatmet <- function(pseudo_groups, batch = NULL) {
+run_combatmet <- function(pseudo_groups, batch = NULL,
+                          batch_rule = c("balanced", "median")) {
+  batch_rule <- match.arg(batch_rule)
   if (!requireNamespace("ComBatMet", quietly = TRUE)) {
     stop("run_combatmet: package 'ComBatMet' is not installed. Install it with ",
          "remotes::install_github('JmWangBio/ComBatMet'), or drop 'ComBatMet' ",
@@ -399,11 +423,17 @@ run_combatmet <- function(pseudo_groups, batch = NULL) {
   group <- factor(rep(c("PseudoA", "PseudoB"), c(n_A, n_B)),
                   levels = c("PseudoA", "PseudoB"))
   if (is.null(batch)) {
-    batch <- .efficiency_batch(pseudo_groups$params, n_A, n_B)
+    batch <- .efficiency_batch(pseudo_groups$params, n_A, n_B, rule = batch_rule)
+    batch_source <- paste(batch_rule, "efficiency split")
+  } else {
+    batch_source <- "supplied by caller"
   }
-  batch <- as.factor(batch)
+  # Drop unused levels so a label that puts every replicate in one batch is
+  # recognised as having a single level.
+  batch <- droplevels(as.factor(batch))
 
-  message("Method: ComBatMet (ComBat_met, group protected)")
+  message("Method: ComBatMet (ComBat_met, group protected; batch: ",
+          batch_source, ")")
   message("  batch: ",
           paste(sprintf("%s=%s", names(all_samples), as.character(batch)),
                 collapse = ", "))
@@ -425,8 +455,24 @@ run_combatmet <- function(pseudo_groups, batch = NULL) {
     stop(.method_inapplicable(
       paste0("batch is perfectly confounded with group (each batch level falls ",
              "entirely within one group), so ComBat cannot separate the ",
-             "efficiency artifact from biological signal. Expected for the ",
-             "aligned_* scenarios, whose efficiency ranges do not overlap."),
+             "efficiency artifact from biological signal. Expected with ",
+             "median-split labels in the aligned_* scenarios, whose ",
+             "efficiency ranges do not overlap."),
+      method = "ComBatMet"))
+  }
+
+  # ComBat_met cannot fit a batch of fewer than three samples: it stops with
+  # "subscript out of bounds" (checked on 2- and 3-sample batches, 2026-11-13).
+  # Balanced labels need four or more replicates per group to avoid this; with
+  # three, one batch holds a single replicate from each group. Record that as
+  # inapplicable instead of letting the crash abort the whole run.
+  batch_sizes <- table(batch)
+  if (any(batch_sizes < 3)) {
+    stop(.method_inapplicable(
+      paste0("batch sizes are ",
+             paste(names(batch_sizes), batch_sizes, sep = " = ", collapse = ", "),
+             ", and ComBat_met needs at least 3 samples in every batch. ",
+             "Balanced efficiency labels need 4 or more replicates per group."),
       method = "ComBatMet"))
   }
 
@@ -839,7 +885,11 @@ call_dmrs_metilene <- function(split_data,
 #'
 #' @param pseudo_groups List from create_pseudo_groups().
 #' @param methods Character vector of methods to run.
-#'   Options: "raw", "downsampled", "SMFnorm", "ComBatMet"
+#'   Options: "raw", "downsampled", "SMFnorm", "ComBatMet_balanced",
+#'   "ComBatMet_median". The two ComBatMet arms differ only in how the batch
+#'   label is derived from the simulated efficiencies (see
+#'   [.efficiency_batch()]); "ComBatMet" is an alias for
+#'   "ComBatMet_balanced".
 #' @param SMFnorm_params Named list of SMFnorm parameters.
 #' @return Named list of results, each with `$method` and `$data`, with one
 #'   element per entry of `methods`. Carries a `"method_failures"` attribute: a
@@ -857,7 +907,8 @@ run_all_methods <- function(pseudo_groups,
   # identical filtered, shared-site set. Do not filter again at this stage.
   if (length(methods) == 0L) {
     stop("run_all_methods: `methods` is empty/NULL. Set config$methods to a ",
-         "non-empty subset of c('raw','downsampled','SMFnorm','ComBatMet').",
+         "non-empty subset of c('raw','downsampled','SMFnorm',",
+         "'ComBatMet_balanced','ComBatMet_median').",
          call. = FALSE)
   }
 
@@ -888,7 +939,9 @@ run_all_methods <- function(pseudo_groups,
              downsampled = run_downsampled(pseudo_copy),
              SMFnorm = do.call(run_SMFnorm, c(list(pseudo_groups = pseudo_copy),
                                                   SMFnorm_params)),
-             ComBatMet = run_combatmet(pseudo_copy),
+             ComBatMet = ,
+             ComBatMet_balanced = run_combatmet(pseudo_copy, batch_rule = "balanced"),
+             ComBatMet_median = run_combatmet(pseudo_copy, batch_rule = "median"),
              stop("Unknown method: ", m)
       )
     # The inapplicable handler MUST come first: the condition also carries
@@ -922,6 +975,7 @@ run_all_methods <- function(pseudo_groups,
     } else {
       message(sprintf("Method %s completed in %.1f seconds", m, elapsed))
       result$elapsed_seconds <- elapsed
+      result$method <- m   # the arm as requested, e.g. ComBatMet_median
       results[[m]] <- result
     }
   }

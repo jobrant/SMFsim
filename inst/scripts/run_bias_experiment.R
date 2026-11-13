@@ -55,7 +55,8 @@ config$effect_sizes      <- c(0.10, 0.15, 0.20, 0.30)
 config$seed              <- 42
 config$standard_chr_only <- TRUE
 config$metilene_min_cpg  <- 10
-config$methods           <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
+config$methods           <- c("raw", "downsampled", "SMFnorm",
+                              "ComBatMet_balanced", "ComBatMet_median")
 
 # --- Which blocks to run ------------------------------------------------
 # All of them by default. To rerun a subset -- e.g. after changing only the
@@ -173,8 +174,10 @@ if ("control_within" %in% run_blocks) {
 # (2) The artifact: systematic between-group efficiency bias. rate_between_groups
 #     = TRUE so SMFnorm can correct the between-group shift. Expect RAW to call
 #     false positives (null) and biased DMRs (spike-in); normalization to reduce
-#     them. ComBatMet is inapplicable in aligned_* (batch == group) and runs in
-#     imbalanced_*, whose explicit efficiencies make the batch cross the groups.
+#     them. ComBatMet_median is inapplicable in aligned_* (batch == group) and
+#     runs in imbalanced_*, whose explicit efficiencies make the batch cross the
+#     groups. ComBatMet_balanced runs everywhere, but its batches are
+#     independent of group, so it cannot remove a between-group shift.
 if ("bias_parametric" %in% run_blocks) {
     run_block("bias_parametric",
               scenarios    = c("aligned_strong", "aligned_moderate",

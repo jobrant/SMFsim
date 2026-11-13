@@ -97,7 +97,7 @@ dir.create(out, recursive = TRUE, showWarnings = FALSE)
 # Each returns a factor, PseudoA replicates first then PseudoB.
 labellings <- list(
     median   = function(eA, eB) .median_batch(list(efficiency_A = eA, efficiency_B = eB),
-                                              length(eA), length(eB)),
+                                              length(eA), length(eB), rule = "median"),
     balanced = function(eA, eB) {
         top <- function(e) rank(-e, ties.method = "first") <= length(e) %/% 2
         factor(ifelse(c(top(eA), top(eB)), "high_eff", "low_eff"),

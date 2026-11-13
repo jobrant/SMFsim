@@ -208,7 +208,8 @@ test_that(".method_inapplicable is an error subclass, so unhandled it still stop
 
 test_that("run_combatmet signals INAPPLICABLE, not a plain error, under confounding", {
     skip_if_not_installed("ComBatMet")
-    expect_error(run_combatmet(.mk_confounded(aligned = TRUE)),
+    expect_error(run_combatmet(.mk_confounded(aligned = TRUE),
+                               batch_rule = "median"),
                  class = "smfsim_method_inapplicable")
 })
 
@@ -216,11 +217,11 @@ test_that("run_combatmet signals INAPPLICABLE, not a plain error, under confound
 test_that("an inapplicable method is skipped and recorded, and the run continues", {
     skip_if_not_installed("ComBatMet")
     res <- run_all_methods(.mk_confounded(aligned = TRUE),
-                           methods = c("raw", "SMFnorm", "ComBatMet"))
+                           methods = c("raw", "SMFnorm", "ComBatMet_median"))
 
     expect_setequal(names(res), c("raw", "SMFnorm"))
-    expect_named(attr(res, "method_inapplicable"), "ComBatMet")
-    expect_match(attr(res, "method_inapplicable")[["ComBatMet"]],
+    expect_named(attr(res, "method_inapplicable"), "ComBatMet_median")
+    expect_match(attr(res, "method_inapplicable")[["ComBatMet_median"]],
                  "confounded with group")
     expect_length(attr(res, "method_failures"), 0L)
 })
@@ -242,7 +243,7 @@ test_that("an inapplicable arm does not mask a genuine failure elsewhere", {
     # must still abort, and must name only the real failure as missing.
     err <- tryCatch(
         run_all_methods(.mk_confounded(aligned = TRUE),
-                        methods = c("raw", "ComBatMet", "bogus")),
+                        methods = c("raw", "ComBatMet_median", "bogus")),
         error = function(e) conditionMessage(e))
 
     expect_match(err, "1 of 3 requested method\\(s\\) produced no results")

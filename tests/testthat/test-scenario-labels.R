@@ -106,7 +106,8 @@ test_that(".scenario_label() accepts a factor, as ggplot labellers pass one", {
 .median_split <- function(sc, n_reps = 4L) {
     a <- .resolve_efficiencies(sc$efficiency_A, n_reps, "A")
     b <- .resolve_efficiencies(sc$efficiency_B, n_reps, "B")
-    .efficiency_batch(list(efficiency_A = a, efficiency_B = b), n_reps, n_reps)
+    .efficiency_batch(list(efficiency_A = a, efficiency_B = b), n_reps, n_reps,
+                      rule = "median")
 }
 
 test_that("imbalanced_* are explicit vectors, not sampled ranges", {

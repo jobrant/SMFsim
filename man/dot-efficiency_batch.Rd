@@ -4,34 +4,45 @@
 \alias{.efficiency_batch}
 \title{Derive a ComBat batch label from per-replicate enzyme efficiency}
 \usage{
-.efficiency_batch(params, n_A, n_B)
+.efficiency_batch(params, n_A, n_B, rule = c("balanced", "median"))
 }
 \arguments{
 \item{params}{\code{params} element of a \code{\link[=create_pseudo_groups]{create_pseudo_groups()}} result.}
 
 \item{n_A, n_B}{Replicate counts for the two pseudo-groups.}
+
+\item{rule}{"balanced" (default) or "median".}
 }
 \value{
 Factor of batch labels, PseudoA replicates first then PseudoB.
 }
 \description{
 ComBat requires a discrete batch variable, but the artifact SMFsim simulates
-is a continuous per-replicate efficiency. Splitting replicates at the median
-efficiency gives the batch label an analyst could plausibly construct from
-QC (high- vs low-efficiency samples).
-}
-\details{
-The split is deliberately scenario-dependent, and that is the point:
-\itemize{
-\item \verb{imbalanced_*} scenarios use explicit efficiencies that interleave
-across groups (A = 3 high / 1 low, B = 1 high / 3 low), so the split
-crosses the group boundary and ComBat has a separable artifact to
-remove. They must be explicit: sampled from barely-overlapping ranges,
-the split was usually perfectly confounded anyway.
-\item \verb{aligned_*} scenarios use non-overlapping ranges, so the split
-reproduces the group labels exactly. Batch is then perfectly confounded
-with group and no batch-correction method can separate artifact from
-biology.
+is a continuous per-replicate efficiency. Two rules turn the simulated
+efficiencies into a two-level label (\code{high_eff} / \code{low_eff}). Both use the
+true simulated efficiencies, which an analyst would not have; they stand in
+for two kinds of experimental design.
+\describe{
+\item{"balanced" (default)}{Within EACH group, the more efficient half of
+the replicates is \code{high_eff}. Every batch holds the same number of
+replicates from each group, as in an experiment that processes equal
+numbers of each condition per batch. This is the design ComBat is built
+for. Batch is never confounded with group, so the method is always
+applicable on that count; in turn it cannot remove an efficiency
+difference that lines up with group. It needs four or more replicates
+per group: with three, one batch holds only two samples, which
+ComBat_met cannot fit, and \code{\link[=run_combatmet]{run_combatmet()}} reports the arm as
+inapplicable.}
+\item{"median"}{Replicates above the median efficiency of ALL replicates
+are \code{high_eff}. Batch membership then depends on group whenever the
+groups differ in efficiency: a partially confounded design in the
+\verb{imbalanced_*} and \code{severe} scenarios (A = 3 high / 1 low, B = 1 high /
+3 low, or the reverse), and a perfectly confounded one in \verb{aligned_*},
+where \code{\link[=run_combatmet]{run_combatmet()}} refuses to run. Within a batch the two groups
+can differ in efficiency; with group protected in the model ComBat keeps
+that difference as biology. In the matched-mean \code{severe} null this gave
+7,791 false-positive DMRs against 11 with balanced labels
+(diagnose_combatmet_batch_labels.R, 2026-11-13).}
 }
 }
 \keyword{internal}

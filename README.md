@@ -96,7 +96,16 @@ SMFsim currently compares these methods:
   coverage across samples at each site
 - `SMFnorm` — the SMFnorm normalization pipeline with `within_alpha` and
   `between_alpha` control
-- `ComBatMet` — manual mean-only batch correction on logit-transformed rates
+- `ComBatMet_balanced` — ComBat-met beta-regression batch correction
+  (`ComBatMet::ComBat_met`, group protected), with a batch label that puts the
+  more efficient half of each group's replicates in one batch. Every batch
+  holds equal numbers from each group. `ComBatMet` is an alias for this arm.
+- `ComBatMet_median` — the same correction with a batch label from a median
+  split of all replicates' efficiencies, which is partially or fully
+  confounded with group when the groups differ in efficiency
+
+Both batch labels are derived from the simulated efficiencies, which an analyst
+would not have. See `.efficiency_batch()`.
 
 ## Installation
 

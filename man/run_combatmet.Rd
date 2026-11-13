@@ -4,13 +4,21 @@
 \alias{run_combatmet}
 \title{Run ComBatMet normalization}
 \usage{
-run_combatmet(pseudo_groups, batch = NULL)
+run_combatmet(
+  pseudo_groups,
+  batch = NULL,
+  batch_rule = c("balanced", "median")
+)
 }
 \arguments{
 \item{pseudo_groups}{List from \code{\link[=create_pseudo_groups]{create_pseudo_groups()}}.}
 
 \item{batch}{Optional explicit batch factor, one entry per replicate ordered
-PseudoA then PseudoB. Defaults to the median-efficiency split.}
+PseudoA then PseudoB. Overrides \code{batch_rule}.}
+
+\item{batch_rule}{How to derive the batch label from the simulated
+efficiencies when \code{batch} is not given: "balanced" (default) or "median".
+See \code{\link[=.efficiency_batch]{.efficiency_batch()}}.}
 }
 \value{
 Named list with method = "ComBatMet" and normalized split data.
@@ -22,7 +30,7 @@ batch correction, on the per-site rate matrix.
 \details{
 The biological group is passed as \code{group} with \code{full_mod = TRUE} so it enters
 the model and is PROTECTED; only batch effects are removed. Batch defaults to
-an efficiency stratum from \code{\link[=.efficiency_batch]{.efficiency_batch()}}.
+an efficiency stratum from \code{\link[=.efficiency_batch]{.efficiency_batch()}}, built by \code{batch_rule}.
 
 Note: an earlier version of this function hand-rolled a "mean-only"
 adjustment that subtracted each group's own mean and added the grand mean.

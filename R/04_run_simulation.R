@@ -44,6 +44,8 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
     min_sites = 10, 
     wt_group_id       = "PrEC",   # normal prostate epithelial cells (3 reps)
     seed              = 42,
+    # "ComBatMet" = ComBatMet_balanced. Add "ComBatMet_median" to also run the
+    # median-split batch labelling (see .efficiency_batch()).
     methods       = c("raw", "downsampled", "SMFnorm", "ComBatMet"),
     metilene_max_dist = 300,
     metilene_min_cpg  = 10,

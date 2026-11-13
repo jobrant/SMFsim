@@ -20,14 +20,28 @@ method_colors <- c(
   "raw"         = "#E41A1C",
   "downsampled" = "#377EB8",
   "SMFnorm"   = "#4DAF4A",
-  "ComBatMet"   = "#984EA3"
+  "ComBatMet"   = "#984EA3",
+  "ComBatMet_balanced" = "#984EA3",
+  "ComBatMet_median"   = "#FF7F00"
 )
 
 method_labels <- c(
   "raw"         = "Raw (no normalization)",
   "downsampled" = "Downsampled",
   "SMFnorm"   = "SMFnorm",
-  "ComBatMet"   = "ComBatMet"
+  "ComBatMet"   = "ComBatMet",
+  "ComBatMet_balanced" = "ComBatMet (balanced batches)",
+  "ComBatMet_median"   = "ComBatMet (median-split batches)"
+)
+
+# Point shapes, named so a run with any subset of methods maps consistently.
+method_shapes <- c(
+  "raw"         = 16,
+  "downsampled" = 17,
+  "SMFnorm"   = 15,
+  "ComBatMet"   = 18,
+  "ComBatMet_balanced" = 18,
+  "ComBatMet_median"   = 8
 )
 
 
@@ -140,7 +154,7 @@ plot_sensitivity_curves <- function(spikein_dt, out_dir = NULL) {
     facet_wrap(~ efficiency_scenario,
                labeller = labeller(efficiency_scenario = .scenario_label)) +
     scale_color_manual(values = method_colors, labels = method_labels) +
-    scale_shape_manual(values = c(16, 17, 15, 18), labels = method_labels) +
+    scale_shape_manual(values = method_shapes, labels = method_labels) +
     scale_x_continuous(breaks = c(0.05, 0.10, 0.15, 0.20, 0.30)) +
     scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.2)) +
     labs(
@@ -252,7 +266,7 @@ plot_fdr <- function(spikein_dt, out_dir = NULL) {
     facet_wrap(~ efficiency_scenario,
                labeller = labeller(efficiency_scenario = .scenario_label)) +
     scale_color_manual(values = method_colors, labels = method_labels) +
-    scale_shape_manual(values = c(16, 17, 15, 18), labels = method_labels) +
+    scale_shape_manual(values = method_shapes, labels = method_labels) +
     scale_y_continuous(limits = c(0, 1)) +
     labs(
       title = "False Discovery Rate Across Conditions",

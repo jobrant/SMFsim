@@ -74,7 +74,8 @@ config$sim_mode            <- "parametric"
 config$dispersion_s        <- 128  # calibrate_replicate_noise.R, M1 (2026-10-28); was 26
 config$rate_between_groups <- TRUE    # SMFnorm default; see parse_args()
 config$scenarios           <- c("mild", "moderate", "severe")
-config$methods             <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
+config$methods             <- c("raw", "downsampled", "SMFnorm",
+                                "ComBatMet_balanced", "ComBatMet_median")
 config$seed                <- 42
 
 if (FAST_MODE) {
@@ -296,10 +297,11 @@ if (!is.data.table(null_dt) || !"method" %in% names(null_dt)) {
     check3 <- length(absent) == 0L
     if (check3) {
         message("  OK - all ", length(requested), " requested methods are present.")
-        if ("ComBatMet" %in% present) {
+        if ("ComBatMet_median" %in% present) {
             message("  NOTE: these scenarios have OVERLAPPING efficiency ranges, so")
-            message("  batch crosses the group boundary and ComBat is applicable.")
-            message("  In the aligned_* scenarios it will correctly refuse to run.")
+            message("  the median-split batch crosses the group boundary and ComBat")
+            message("  is applicable. In the aligned_* scenarios ComBatMet_median")
+            message("  will correctly refuse to run.")
         }
     } else {
         message("  !! FAILED - ABSENT from the results: ",

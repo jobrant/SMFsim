@@ -14,7 +14,11 @@ run_all_methods(
 \item{pseudo_groups}{List from create_pseudo_groups().}
 
 \item{methods}{Character vector of methods to run.
-Options: "raw", "downsampled", "SMFnorm", "ComBatMet"}
+Options: "raw", "downsampled", "SMFnorm", "ComBatMet_balanced",
+"ComBatMet_median". The two ComBatMet arms differ only in how the batch
+label is derived from the simulated efficiencies (see
+\code{\link[=.efficiency_batch]{.efficiency_batch()}}); "ComBatMet" is an alias for
+"ComBatMet_balanced".}
 
 \item{SMFnorm_params}{Named list of SMFnorm parameters.}
 }

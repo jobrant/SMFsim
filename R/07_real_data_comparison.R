@@ -513,7 +513,9 @@ method_colors <- c(
   "raw"         = "#E41A1C",
   "downsampled" = "#377EB8",
   "SMFnorm"   = "#4DAF4A",
-  "ComBatMet"   = "#984EA3"
+  "ComBatMet"   = "#984EA3",
+  "ComBatMet_balanced" = "#984EA3",
+  "ComBatMet_median"   = "#FF7F00"
 )
 
 
