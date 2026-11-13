@@ -139,6 +139,14 @@ seed per job with `inst/slurm/bias_experiment_seeds.sbatch` (which sets
 `SMFSIM_SEED` and `SMFSIM_OUTPUT` for `run_bias_experiment.R`) and combine them
 afterwards with `inst/scripts/summarize_seeds.R`, or `combine_seed_dirs()`.
 
+### Input location and SMFnorm bins
+
+`SMFSIM_DATA_DIR` and `SMFSIM_SAMPLE_SHEET` set the allc directory and sample
+sheet for every driver script (`--data_dir` / `--sample_sheet` override them).
+`--max_quantiles` caps SMFnorm's number of rate bins (default 50);
+`SMFSIM_METHODS` restricts `run_bias_experiment.R` to some methods, e.g.
+`SMFnorm` alone when sweeping the bin count.
+
 ## Installation
 
 ```r

@@ -9,7 +9,8 @@ run_SMFnorm(
   within_alpha = 1,
   between_alpha = 1,
   min_coverage = 10,
-  rate_between_groups = TRUE
+  rate_between_groups = TRUE,
+  max_quantiles = 50
 )
 }
 \arguments{
@@ -28,6 +29,9 @@ applied in full at any value; alpha < 1 only shrinks noise.}
 difference between groups while removing replicate spread, so it makes
 that difference look more significant than in raw data. Set FALSE only
 when conditions are expected to differ genome-wide.}
+
+\item{max_quantiles}{Cap on the number of rate bins, passed to
+\code{\link[SMFnorm:normalize_methylation_data]{SMFnorm::normalize_methylation_data()}} (default 50, SMFnorm's default).}
 }
 \value{
 Named list with method = "SMFnorm" and normalized split data.

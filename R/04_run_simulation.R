@@ -32,8 +32,14 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
 
   # Defaults — adjust these to your local setup
   config <- list(
-    data_dir      = "data/allc_methylseq4.2_clip5",  # canonical since 2026-10-27; 2024 processing in data/allc
-    sample_sheet  = "data/sample_sheet.csv",
+    # Input location. SMFSIM_DATA_DIR and SMFSIM_SAMPLE_SHEET set these for a
+    # whole run without editing any script; --data_dir / --sample_sheet
+    # override both.
+    data_dir      = Sys.getenv("SMFSIM_DATA_DIR", "data/allc_methylseq4.2_clip5"),
+    sample_sheet  = Sys.getenv("SMFSIM_SAMPLE_SHEET", "data/sample_sheet.csv"),
+    # Regex of chromosomes to keep, e.g. "^(chr)?1$" for a quick chr1 run.
+    # NULL = all standard chromosomes (see prepare_wt_replicates()).
+    chr_pattern   = NULL,
     output_dir    = "results/simulation",
     metilene_path = "/apps/metilene/0.2.8/metilene",
     scenarios     = c("mild", "moderate", "severe"),
@@ -86,6 +92,8 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
     within_alpha = 1.0,
     between_alpha = 1.0,
     min_coverage = 10,
+    # Cap on SMFnorm's number of rate bins (SMFnorm's own default is 50).
+    max_quantiles = 50L,
     # Beta precision for per-site overdispersion (Inf = pure binomial).
     # Calibrated to real M1 replicates by calibrate_replicate_noise.R after
     # removing efficiency per rate bin (2026-10-28). The earlier value, 26,
@@ -133,7 +141,8 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
   int_keys  <- c("seed", "n_spikein_regions", "region_width_bp",
                  "metilene_min_cpg", "metilene_max_dist", "min_coverage",
                  "metilene_mtc", "min_sites", "max_median_spacing",
-                 "fragment_bp", "bio_region_bp", "spikein_density_strata")
+                 "fragment_bp", "bio_region_bp", "spikein_density_strata",
+                 "max_quantiles")
   num_keys  <- c("metilene_min_diff", "dispersion_s", "metilene_qval",
                  "within_alpha", "between_alpha", "metilene_min_effect",
                  "fragment_rho", "bio_region_sd")
@@ -202,6 +211,10 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
   if (config$spikein_density_strata < 1) {
     stop("parse_args: --spikein_density_strata must be >= 1, got ",
          config$spikein_density_strata, ".", call. = FALSE)
+  }
+  if (config$max_quantiles < 1) {
+    stop("parse_args: --max_quantiles must be >= 1, got ",
+         config$max_quantiles, ".", call. = FALSE)
   }
   if (config$fragment_rho < 0 || config$fragment_rho >= 1) {
     stop("parse_args: --fragment_rho must be in [0, 1), got ",
@@ -371,7 +384,8 @@ run_null_simulation <- function(wt_reps, config) {
         within_alpha = config$within_alpha,
         between_alpha = config$between_alpha,
         min_coverage = config$min_coverage %||% 10,
-        rate_between_groups = config$rate_between_groups %||% TRUE
+        rate_between_groups = config$rate_between_groups %||% TRUE,
+        max_quantiles = config$max_quantiles %||% 50L
       )
     )
 
@@ -653,7 +667,8 @@ run_spikein_simulation <- function(wt_reps, config) {
           within_alpha = config$within_alpha,
           between_alpha = config$between_alpha,
           min_coverage = config$min_coverage,
-          rate_between_groups = config$rate_between_groups %||% TRUE
+          rate_between_groups = config$rate_between_groups %||% TRUE,
+          max_quantiles = config$max_quantiles %||% 50L
         )
       )
       

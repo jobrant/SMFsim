@@ -292,14 +292,17 @@ run_downsampled <- function(pseudo_groups) {
 #'   difference between groups while removing replicate spread, so it makes
 #'   that difference look more significant than in raw data. Set FALSE only
 #'   when conditions are expected to differ genome-wide.
+#' @param max_quantiles Cap on the number of rate bins, passed to
+#'   [SMFnorm::normalize_methylation_data()] (default 50, SMFnorm's default).
 #' @return Named list with method = "SMFnorm" and normalized split data.
 run_SMFnorm <- function(pseudo_groups,
                         within_alpha = 1.0,
                         between_alpha = 1.0,
                         min_coverage = 10,
-                        rate_between_groups = TRUE) {
-  message(sprintf("Method: SMFnorm (rate_between_groups = %s)",
-                  rate_between_groups))
+                        rate_between_groups = TRUE,
+                        max_quantiles = 50) {
+  message(sprintf("Method: SMFnorm (rate_between_groups = %s, max_quantiles = %s)",
+                  rate_between_groups, max_quantiles))
 
   # Ensure all samples share the same site set at the requested coverage.
   pseudo_groups <- .filter_pseudo_groups_by_min_coverage(pseudo_groups,
@@ -317,7 +320,8 @@ run_SMFnorm <- function(pseudo_groups,
     rate_between_groups = rate_between_groups,
     within_alpha = within_alpha,
     between_alpha = between_alpha,
-    min_coverage = min_coverage
+    min_coverage = min_coverage,
+    max_quantiles = max_quantiles
   )
 
   return(list(method = "SMFnorm", data = normalized))

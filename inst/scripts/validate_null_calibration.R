@@ -32,8 +32,8 @@
 # Usage (from the package root):
 #   Rscript inst/scripts/validate_null_calibration.R
 #
-# Start with FAST_MODE <- TRUE (chr1 only, ~20-40 min) to catch plumbing errors
-# cheaply, then re-run with FAST_MODE <- FALSE for the real calibration verdict.
+# Start with SMFSIM_FAST=1 (chr1 only, ~20-40 min) to catch plumbing errors
+# cheaply, then re-run without it for the real calibration verdict.
 
 # Load SMFsim from SOURCE when it is reachable, so a run always uses the code
 # in this checkout: from the package root (DESCRIPTION) or from the manuscript
@@ -57,15 +57,16 @@ suppressWarnings(suppressMessages(library(data.table)))
 
 # === EDIT THESE FOR YOUR ENVIRONMENT =====================================
 config <- parse_args()
-config$data_dir      <- "data/allc_methylseq4.2_clip5"
-config$sample_sheet  <- "data/sample_sheet.csv"
+# Input location comes from parse_args(): SMFSIM_DATA_DIR / SMFSIM_SAMPLE_SHEET,
+# or --data_dir / --sample_sheet.
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
 # Override with SMFSIM_OUTPUT (e.g. for robustness runs) instead of editing this.
-base_output          <- Sys.getenv("SMFSIM_OUTPUT",
-                                   "/orange/jobrant/yuki/smfnorm-sim-manuscript/results/null_calibration")
-
-FAST_MODE <- FALSE   # TRUE = chr1 only. Do this first, then set FALSE.
+# SMFSIM_FAST=1 runs chr1 only. Do that first, then the genome-wide run.
+FAST_MODE <- identical(Sys.getenv("SMFSIM_FAST"), "1")
+base_output <- Sys.getenv("SMFSIM_OUTPUT",
+                          if (FAST_MODE) "results/null_calibration_fast"
+                          else "results/null_calibration")
 # =========================================================================
 
 # True null: within-group efficiency variation, matched group means, no
@@ -80,7 +81,6 @@ config$seed                <- 42
 
 if (FAST_MODE) {
     config$chr_pattern <- "^(chr)?1$"
-    base_output        <- "/orange/jobrant/yuki/smfnorm-sim-manuscript/results/null_calibration_fast"
     message("FAST_MODE: chr1 only -> ", base_output)
 }
 config$output_dir <- base_output
@@ -327,7 +327,7 @@ message("  3. all methods ran            : ", fmt(check3))
 
 if (isTRUE(check1) && isTRUE(check2) && isTRUE(check3)) {
     if (FAST_MODE) {
-        message("\n  All checks pass on chr1. Now set FAST_MODE <- FALSE and")
+        message("\n  All checks pass on chr1. Now unset SMFSIM_FAST and")
         message("  re-run for the genome-wide calibration verdict.")
     } else {
         message("\n  All checks pass genome-wide. Cleared to run the alpha grid.")

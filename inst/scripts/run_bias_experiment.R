@@ -30,8 +30,9 @@ if (requireNamespace("devtools", quietly = TRUE) && file.exists("SMFsim/DESCRIPT
 
 # === EDIT THESE FOR YOUR ENVIRONMENT =====================================
 config <- parse_args()
-config$data_dir      <- "data/allc_methylseq4.2_clip5"
-config$sample_sheet  <- "data/sample_sheet.csv"
+# Input location comes from parse_args(): SMFSIM_DATA_DIR / SMFSIM_SAMPLE_SHEET,
+# or --data_dir / --sample_sheet, else data/allc_methylseq4.2_clip5 and
+# data/sample_sheet.csv.
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
 # Override with SMFSIM_OUTPUT (e.g. for robustness runs) instead of editing this.
@@ -65,8 +66,15 @@ config$seed <- if (nzchar(seed_env)) {
 message("Seed: ", config$seed)
 config$standard_chr_only <- TRUE
 config$metilene_min_cpg  <- 10
-config$methods           <- c("raw", "downsampled", "SMFnorm",
-                              "ComBatMet_balanced", "ComBatMet_median")
+# SMFSIM_METHODS (comma-separated) restricts the methods, e.g. SMFnorm alone
+# for a sweep over --max_quantiles, which no other method depends on.
+methods_env <- trimws(Sys.getenv("SMFSIM_METHODS"))
+config$methods <- if (nzchar(methods_env)) {
+    trimws(strsplit(methods_env, ",")[[1]])
+} else {
+    c("raw", "downsampled", "SMFnorm", "ComBatMet_balanced", "ComBatMet_median")
+}
+message("Methods: ", paste(config$methods, collapse = ", "))
 
 # --- Which blocks to run ------------------------------------------------
 # All of them by default. To rerun a subset -- e.g. after changing only the

@@ -62,8 +62,6 @@ out <- Sys.getenv("CBM_OUT", file.path(
                       if (nzchar(chr_pattern)) paste0("_", gsub("[^A-Za-z0-9]", "", chr_pattern)))))
 
 config <- parse_args(character(0))
-config$data_dir      <- "data/allc_methylseq4.2_clip5"
-config$sample_sheet  <- "data/sample_sheet.csv"
 config$metilene_path <- "/apps/metilene/0.2.8/metilene"
 config$wt_group_id   <- "M1"
 config$sim_mode      <- "parametric"
