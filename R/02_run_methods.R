@@ -312,9 +312,7 @@ run_SMFnorm <- function(pseudo_groups,
   # Run full normalization
   normalized <- SMFnorm::normalize_methylation_data(
     data_list = split_data,
-    do_coverage_norm = TRUE,
     normalize_rates = TRUE,
-    coverage_between_groups = FALSE,
     rate_within_groups = TRUE,
     rate_between_groups = rate_between_groups,
     within_alpha = within_alpha,

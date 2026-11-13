@@ -209,9 +209,7 @@ run_all_methods_real <- function(real_data,
           split_data <- SMFnorm::split_by_groups(all_samples)
           normalized <- SMFnorm::normalize_methylation_data(
             data_list = split_data,
-            do_coverage_norm = TRUE,
             normalize_rates = TRUE,
-            coverage_between_groups = FALSE,
             rate_within_groups = SMFnorm_params$rate_within_groups %||% TRUE,
             rate_between_groups = SMFnorm_params$rate_between_groups %||% FALSE,
             within_alpha = SMFnorm_params$within_alpha,

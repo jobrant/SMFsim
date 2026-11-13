@@ -75,8 +75,8 @@ smfnorm_mq <- function(pg, mq) {
     pg <- .filter_cov(pg, cfg$min_coverage)
     split_data <- SMFnorm::split_by_groups(.format_smf(pg))
     SMFnorm::normalize_methylation_data(
-        data_list = split_data, do_coverage_norm = TRUE, normalize_rates = TRUE,
-        coverage_between_groups = FALSE, rate_within_groups = TRUE,
+        data_list = split_data, normalize_rates = TRUE,
+        rate_within_groups = TRUE,
         rate_between_groups = TRUE, within_alpha = 1.0, between_alpha = 1.0,
         min_coverage = cfg$min_coverage, max_quantiles = mq)
 }
