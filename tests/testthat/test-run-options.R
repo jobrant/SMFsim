@@ -65,3 +65,39 @@ test_that("parse_args accepts a chromosome pattern and defaults to none", {
     expect_identical(parse_args(c("--chr_pattern", "^(chr)?1$"))$chr_pattern,
                      "^(chr)?1$")
 })
+
+
+# The input files are about 1 GB per genome-wide run; a multi-seed benchmark
+# filled a 5 TB volume with them (2026-11-17).
+test_that("metilene input files are deleted after a completed run unless kept", {
+    skip_on_os("windows")
+    fake <- tempfile("fake_metilene_")
+    writeLines(c("#!/bin/sh", "echo 'Number of Tests: 50' >&2"), fake)
+    Sys.chmod(fake, "0755")
+    mk <- function(g) stats::setNames(lapply(1:2, function(i) data.table::data.table(
+        chr = "chr1", pos = 1:50 * 10L, strand = "+", site = "GCH",
+        mc = 3L, cov = 10L, rate = 0.3)), paste0(g, "_", 1:2))
+    dat <- list(PseudoA = mk("PseudoA"), PseudoB = mk("PseudoB"))
+
+    out <- tempfile("dmr_")
+    suppressMessages(call_dmrs_metilene(dat, out, fake, min_diff = 0, q_source = "BH"))
+    expect_false(dir.exists(file.path(out, "metilene_input")))
+    expect_true(file.exists(file.path(out, "metilene_log.txt")))
+
+    out2 <- tempfile("dmr_")
+    suppressMessages(call_dmrs_metilene(dat, out2, fake, min_diff = 0, q_source = "BH",
+                                        keep_input = TRUE))
+    expect_true(file.exists(file.path(out2, "metilene_input", "merged_input.bed")))
+
+    # A failed run keeps its input for diagnosis.
+    bad <- tempfile("bad_metilene_")
+    writeLines(c("#!/bin/sh", "exit 3"), bad); Sys.chmod(bad, "0755")
+    out3 <- tempfile("dmr_")
+    expect_error(suppressMessages(call_dmrs_metilene(dat, out3, bad, min_diff = 0,
+                                                     q_source = "BH")),
+                 "did not complete")
+    expect_true(dir.exists(file.path(out3, "metilene_input")))
+
+    expect_false(parse_args(character(0))$keep_metilene_input)
+    expect_true(parse_args(c("--keep_metilene_input", "true"))$keep_metilene_input)
+})

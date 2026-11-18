@@ -147,6 +147,13 @@ sheet for every driver script (`--data_dir` / `--sample_sheet` override them).
 `SMFSIM_METHODS` restricts `run_bias_experiment.R` to some methods, e.g.
 `SMFnorm` alone when sweeping the bin count.
 
+### Disk use and ComBat-met cores
+
+Each genome-wide metilene run writes about 1 GB of input files. They are
+deleted after a completed run; `--keep_metilene_input true` keeps them (a
+five-seed bias experiment is then over 1.5 TB). `SMFSIM_COMBATMET_CORES` sets
+the cores ComBat-met uses (default 1); results are the same at any count.
+
 ## Installation
 
 ```r

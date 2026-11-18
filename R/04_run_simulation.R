@@ -92,6 +92,9 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
     within_alpha = 1.0,
     between_alpha = 1.0,
     min_coverage = 10,
+    # Keep each run's metilene input files (about 1 GB per genome-wide run;
+    # a five-seed bias experiment is over 1.5 TB of them). Off by default.
+    keep_metilene_input = FALSE,
     # Cap on SMFnorm's number of rate bins (SMFnorm's own default is 50).
     max_quantiles = 50L,
     # Beta precision for per-site overdispersion (Inf = pure binomial).
@@ -146,7 +149,8 @@ parse_args <- function(args = commandArgs(trailingOnly = TRUE)) {
   num_keys  <- c("metilene_min_diff", "dispersion_s", "metilene_qval",
                  "within_alpha", "between_alpha", "metilene_min_effect",
                  "fragment_rho", "bio_region_sd")
-  flag_keys <- c("rate_between_groups", "standard_chr_only")
+  flag_keys <- c("rate_between_groups", "standard_chr_only",
+                 "keep_metilene_input")
   csv_keys  <- c("scenarios", "methods")
   numvec_keys <- c("effect_sizes")
 
@@ -412,7 +416,8 @@ run_null_simulation <- function(wt_reps, config) {
           q_source = config$metilene_q_source %||% "metilene",
           p_column = config$metilene_p_column %||% "2dks",
           min_effect = config$metilene_min_effect %||% 0,
-          mtc = config$metilene_mtc %||% 1
+          mtc = config$metilene_mtc %||% 1,
+          keep_input = isTRUE(config$keep_metilene_input)
         )
       }, error = function(e) {
         # Stop, naming where it failed. Substituting an empty table here used
@@ -696,7 +701,8 @@ run_spikein_simulation <- function(wt_reps, config) {
             q_source = config$metilene_q_source %||% "metilene",
             p_column = config$metilene_p_column %||% "2dks",
             min_effect = config$metilene_min_effect %||% 0,
-            mtc = config$metilene_mtc %||% 1
+            mtc = config$metilene_mtc %||% 1,
+            keep_input = isTRUE(config$keep_metilene_input)
           )
         }, error = function(e) {
           # Stop, naming where it failed. Substituting an empty table here

@@ -330,6 +330,14 @@ run_SMFnorm <- function(pseudo_groups,
 
 # Method: ComBatMet (via external call) -----------------------------------
 
+# Cores for ComBat_met, from SMFSIM_COMBATMET_CORES (default 1). The adjusted
+# values are identical at any core count (checked 1 vs 4 on 40,000 sites,
+# 2026-11-18); ComBat_met is by far the slowest step of a benchmark run.
+.combatmet_cores <- function() {
+  n <- suppressWarnings(as.integer(Sys.getenv("SMFSIM_COMBATMET_CORES", "1")))
+  if (is.na(n) || n < 1L) 1L else n
+}
+
 #' Derive a ComBat batch label from per-replicate enzyme efficiency
 #'
 #' ComBat requires a discrete batch variable, but the artifact SMFsim simulates
@@ -496,7 +504,7 @@ run_combatmet <- function(pseudo_groups, batch = NULL,
     batch = batch,
     group = group,
     full_mod = TRUE,
-    ncores = 1
+    ncores = .combatmet_cores()
   )
 
   if (!identical(dim(adjusted), dim(rate_matrix))) {
@@ -637,6 +645,9 @@ prepare_metilene_input <- function(split_data, out_dir) {
 #'   (FDR). Note that `mtc = 2` computes BH over ALL tested segments inside
 #'   metilene, which is NOT the same as - and is statistically preferable to -
 #'   the selection-biased `q_source = "BH"` recomputation.
+#' @param keep_input Keep the metilene input files (`metilene_input/` under
+#'   `out_dir`, about 1 GB per genome-wide run) after a completed run. Default
+#'   FALSE: they are deleted; the calls and the log are kept.
 #' @return data.table of significant DMRs with columns: chr, start, end,
 #'   q_value (the chosen one), mean_diff, n_sites, p_mwu, q_metilene, q_bh.
 #'   Stops with an error if metilene exits non-zero or its log lacks the
@@ -651,7 +662,8 @@ call_dmrs_metilene <- function(split_data,
                                q_source = c("metilene", "BH"),
                                p_column = c("2dks", "mwu"),
                                min_effect = 0,
-                               mtc = 1L) {
+                               mtc = 1L,
+                               keep_input = FALSE) {
   q_source <- match.arg(q_source)
   p_column <- match.arg(p_column)
 
@@ -736,6 +748,11 @@ call_dmrs_metilene <- function(split_data,
       else "no 'Number of Tests' line in its log",
       cmd, log_file, log_tail), call. = FALSE)
   }
+
+  # The input files are about 1 GB per genome-wide run and can be rebuilt from
+  # the seed; the calls and the log are what is kept. Left in place when
+  # metilene fails (above), for diagnosis.
+  if (!keep_input) unlink(input_dir, recursive = TRUE)
 
   # Parse metilene output
   empty <- data.table(

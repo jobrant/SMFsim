@@ -15,7 +15,8 @@ call_dmrs_metilene(
   q_source = c("metilene", "BH"),
   p_column = c("2dks", "mwu"),
   min_effect = 0,
-  mtc = 1L
+  mtc = 1L,
+  keep_input = FALSE
 )
 }
 \arguments{
@@ -59,6 +60,10 @@ retained here so existing results stay reproducible), 2 = Benjamini-Hochberg
 (FDR). Note that \code{mtc = 2} computes BH over ALL tested segments inside
 metilene, which is NOT the same as - and is statistically preferable to -
 the selection-biased \code{q_source = "BH"} recomputation.}
+
+\item{keep_input}{Keep the metilene input files (\verb{metilene_input/} under
+\code{out_dir}, about 1 GB per genome-wide run) after a completed run. Default
+FALSE: they are deleted; the calls and the log are kept.}
 }
 \value{
 data.table of significant DMRs with columns: chr, start, end,
