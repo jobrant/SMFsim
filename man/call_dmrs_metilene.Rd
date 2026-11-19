@@ -68,6 +68,8 @@ FALSE: they are deleted; the calls and the log are kept.}
 \value{
 data.table of significant DMRs with columns: chr, start, end,
 q_value (the chosen one), mean_diff, n_sites, p_mwu, q_metilene, q_bh.
+Its \code{"significant"} attribute holds the same columns for every segment
+passing the q cutoff, before the \code{min_effect} cut.
 Stops with an error if metilene exits non-zero or its log lacks the
 "Number of Tests" line: an incomplete run is never reported as 0 DMRs.
 }

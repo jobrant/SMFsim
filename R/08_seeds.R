@@ -74,11 +74,14 @@ combine_seed_dirs <- function(base_dir, block = NULL) {
                    by = c("efficiency_scenario", "effect_size", "method"),
                    values = c("sensitivity", "precision", "FDR", "F1", "TP", "FP",
                               "regions_detected", "total_called",
+                              "regions_significant", "sensitivity_significant",
                               "domain_calls", "domain_retained")),
     spikein_by_density = list(file = "spikein_by_density.csv",
                               by = c("efficiency_scenario", "effect_size",
                                      "method", "density_stratum"),
-                              values = c("sensitivity", "regions_detected"))
+                              values = c("sensitivity", "regions_detected",
+                                         "regions_significant",
+                                         "sensitivity_significant"))
   )
 
   by_seed <- list()

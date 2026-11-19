@@ -8,11 +8,15 @@ compute_metrics(summary_vec)
 }
 \arguments{
 \item{summary_vec}{Named vector with TP, FP, FN (and, for spike-in,
-n_regions, regions_detected) as returned by \code{\link[=classify_dmrs]{classify_dmrs()}}.}
+n_regions, regions_detected) as returned by \code{\link[=classify_dmrs]{classify_dmrs()}}.
+An optional \code{regions_significant} is the number of truth regions
+overlapped by a segment passing the q cutoff, before the effect-size cut.}
 }
 \value{
 Named list: TP, FP, FN, n_regions, regions_detected, sensitivity,
-precision, FDR, F1, total_called.
+precision, FDR, F1, total_called, regions_significant,
+sensitivity_significant (the last two \code{NA} when \code{regions_significant} was
+not supplied).
 }
 \description{
 Recall (sensitivity) is REGION-level: the fraction of truth regions detected

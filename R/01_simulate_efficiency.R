@@ -1062,6 +1062,74 @@ inject_spikein_dmrs <- function(dt,
 }
 
 
+#' Sign of an "auto" spike-in effect
+#'
+#' Low-rate regions are raised and high-rate regions lowered; in between, the
+#' effect goes whichever way has more room.
+#'
+#' @param mean_rate Mean true rate of the region before the effect.
+#' @return 1L (increase) or -1L (decrease).
+#' @keywords internal
+.auto_spikein_sign <- function(mean_rate, low_rate_threshold = 0.4,
+                               high_rate_threshold = 0.6) {
+  if (mean_rate < low_rate_threshold) {
+    1L
+  } else if (mean_rate > high_rate_threshold) {
+    -1L
+  } else if ((1 - mean_rate) >= mean_rate) {
+    1L
+  } else {
+    -1L
+  }
+}
+
+
+#' Planted direction of each parametric spike-in region
+#'
+#' What [inject_spikein_parametric()] does to each region with
+#' `direction = "auto"`, without injecting anything. The direction depends only
+#' on the region's baseline rate, so it is the same at every effect size.
+#'
+#' @param ref_dt data.table of sites (`chr`, `pos`).
+#' @param p Pooled true rate per site, aligned with `ref_dt`.
+#' @param regions data.table with `chr`, `start`, `end` and, optionally,
+#'   `target_group` ("A" or "B"; "B" when absent).
+#' @param low_rate_threshold,high_rate_threshold As in
+#'   [inject_spikein_parametric()].
+#' @return data.table with one row per region, in the order of `regions`:
+#'   `baseline_rate` (mean true rate before the effect), `direction`
+#'   ("increase" or "decrease", in the target group) and `planted_sign`, the
+#'   sign of the planted group A minus group B difference (+1 or -1), which is
+#'   the sign convention of the `mean_diff` column of the DMR calls. All `NA`
+#'   for a region without sites.
+#' @export
+spikein_direction <- function(ref_dt, p, regions,
+                              low_rate_threshold = 0.4,
+                              high_rate_threshold = 0.6) {
+  stopifnot(is.data.table(ref_dt), is.data.table(regions),
+            length(p) == nrow(ref_dt))
+  target <- if ("target_group" %in% names(regions)) regions$target_group else
+    rep("B", nrow(regions))
+  chr <- ref_dt$chr
+  pos <- ref_dt$pos
+  baseline <- rep(NA_real_, nrow(regions))
+  sgn <- rep(NA_integer_, nrow(regions))
+  for (i in seq_len(nrow(regions))) {
+    idx <- which(chr == regions$chr[i] & pos >= regions$start[i] &
+                   pos <= regions$end[i])
+    if (!length(idx)) next
+    baseline[i] <- mean(p[idx])
+    sgn[i] <- .auto_spikein_sign(baseline[i], low_rate_threshold,
+                                 high_rate_threshold)
+  }
+  data.table(
+    baseline_rate = baseline,
+    direction     = ifelse(sgn == 1L, "increase", "decrease"),
+    planted_sign  = ifelse(target == "A", sgn, -sgn)
+  )
+}
+
+
 #' Inject spike-in DMRs into the true rate (parametric mode)
 #'
 #' Unlike `inject_spikein_dmrs()`, which resamples realized counts, this shifts
@@ -1117,13 +1185,7 @@ inject_spikein_parametric <- function(ref_dt, p, regions,
     mean_rate <- mean(old_rates)
 
     dir_sign <- if (direction == "auto") {
-      if (mean_rate < low_rate_threshold) {
-        1L
-      } else if (mean_rate > high_rate_threshold) {
-        -1L
-      } else {
-        if ((1 - mean_rate) >= mean_rate) 1L else -1L
-      }
+      .auto_spikein_sign(mean_rate, low_rate_threshold, high_rate_threshold)
     } else if (direction == "increase") {
       1L
     } else if (direction == "decrease") {

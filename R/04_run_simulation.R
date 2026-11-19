@@ -468,6 +468,10 @@ run_null_simulation <- function(wt_reps, config) {
 #' @return data.table of spike-in results by scenario × effect_size × method.
 #'   Its `"by_density"` attribute, also written to `spikein_by_density.csv`,
 #'   holds region-level sensitivity per spike-in density stratum.
+#'   `sensitivity` counts regions with a call (significant and at least
+#'   `metilene_min_effect`); `sensitivity_significant` counts regions with a
+#'   significant segment of any size. In parametric mode `spikein_regions.csv`
+#'   also records each region's planted direction (see [spikein_direction()]).
 #' @export
 run_spikein_simulation <- function(wt_reps, config) {
   message("\n", strrep("=", 60))
@@ -526,6 +530,15 @@ run_spikein_simulation <- function(wt_reps, config) {
                   sum(spikein_regions$target_group == "A"),
                   sum(spikein_regions$target_group == "B")))
   
+  # The planted direction of each region (parametric mode; it depends only on
+  # the baseline rate, so it is the same at every effect size). Without it a
+  # detected region cannot be told from one where an efficiency bias produced
+  # a call of the opposite sign.
+  if (sim_mode == "parametric") {
+    planted <- spikein_direction(ref_dt, .pooled_rate(wt_reps), spikein_regions)
+    spikein_regions[, names(planted) := planted]
+  }
+
   # Save regions for reference
   regions_path <- file.path(config$output_dir, "spikein_regions.csv")
   dir.create(dirname(regions_path), recursive = TRUE, showWarnings = FALSE)
@@ -714,6 +727,7 @@ run_spikein_simulation <- function(wt_reps, config) {
         
         # In broad-difference scenarios, calls inside the genuine domains are
         # neither spike-in hits nor false positives; score them separately.
+        significant <- attr(dmrs, "significant")
         dom <- NULL
         if (!is.null(broad)) {
           dom <- .split_domain_calls(dmrs, broad$domains, broad$windows)
@@ -723,6 +737,15 @@ run_spikein_simulation <- function(wt_reps, config) {
           called_dmrs = dmrs,
           truth_regions = spikein_regions
         )
+        # Regions with a significant segment before the effect-size cut.
+        if (!is.null(significant)) {
+          eval_result$significant_regions <- classify_dmrs(
+            called_dmrs = significant,
+            truth_regions = spikein_regions
+          )$detected_regions
+          eval_result$summary["regions_significant"] <-
+            length(eval_result$significant_regions)
+        }
         if (!is.null(dom)) {
           eval_result$domain <- list(n_calls = dom$n_domain_calls,
                                      retained = dom$retained)

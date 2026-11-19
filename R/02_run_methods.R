@@ -650,6 +650,8 @@ prepare_metilene_input <- function(split_data, out_dir) {
 #'   FALSE: they are deleted; the calls and the log are kept.
 #' @return data.table of significant DMRs with columns: chr, start, end,
 #'   q_value (the chosen one), mean_diff, n_sites, p_mwu, q_metilene, q_bh.
+#'   Its `"significant"` attribute holds the same columns for every segment
+#'   passing the q cutoff, before the `min_effect` cut.
 #'   Stops with an error if metilene exits non-zero or its log lacks the
 #'   "Number of Tests" line: an incomplete run is never reported as 0 DMRs.
 call_dmrs_metilene <- function(split_data,
@@ -809,12 +811,18 @@ call_dmrs_metilene <- function(split_data,
 
   # Effect-size filter as its own step, so significance and effect size stay
   # separable (see the min_diff = 0 + q_source = "BH" workflow above).
+  keep_cols <- c("chr", "start", "end", "q_value", "mean_diff", "n_sites",
+                 "p_mwu", "q_metilene", "q_bh")
+  significant <- dmrs[, keep_cols, with = FALSE]
   if (min_effect > 0) {
     dmrs <- dmrs[is.finite(mean_diff) & abs(mean_diff) >= min_effect]
   }
 
-  dmrs <- dmrs[, .(chr, start, end, q_value, mean_diff, n_sites,
-                   p_mwu, q_metilene, q_bh)]
+  dmrs <- dmrs[, keep_cols, with = FALSE]
+  # Every segment passing the q cutoff, before the effect-size cut. A planted
+  # effect is observed scaled by the labeling efficiency, so a region can be
+  # significant and still fall under `min_effect`.
+  setattr(dmrs, "significant", significant)
   message(sprintf(
     "metilene: %d candidate DMRs, %d significant (%s q < %.3g)%s",
     n_total, n_sig, q_source, q_cutoff,

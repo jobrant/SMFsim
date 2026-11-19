@@ -14,8 +14,10 @@ compile_density_results(all_results, regions)
 }
 \value{
 data.table with one row per scenario x method x stratum:
-\code{n_regions}, \code{regions_detected}, \code{sensitivity}. Empty if \code{regions} has no
-\code{density_stratum} column.
+\code{n_regions}, \code{regions_detected}, \code{sensitivity}, \code{regions_significant},
+\code{sensitivity_significant} (see \code{\link[=compute_metrics]{compute_metrics()}}; \code{NA} when a result has
+no \code{significant_regions}). Empty if \code{regions} has no \code{density_stratum}
+column.
 }
 \description{
 Region-level sensitivity by spike-in density stratum

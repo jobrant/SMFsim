@@ -147,8 +147,12 @@ classify_dmrs <- function(called_dmrs, truth_regions = NULL, min_overlap_bp = 1)
 #'
 #' @param summary_vec Named vector with TP, FP, FN (and, for spike-in,
 #'   n_regions, regions_detected) as returned by [classify_dmrs()].
+#'   An optional `regions_significant` is the number of truth regions
+#'   overlapped by a segment passing the q cutoff, before the effect-size cut.
 #' @return Named list: TP, FP, FN, n_regions, regions_detected, sensitivity,
-#'   precision, FDR, F1, total_called.
+#'   precision, FDR, F1, total_called, regions_significant,
+#'   sensitivity_significant (the last two `NA` when `regions_significant` was
+#'   not supplied).
 compute_metrics <- function(summary_vec) {
   TP <- unname(summary_vec["TP"])   # call-level
   FP <- unname(summary_vec["FP"])   # call-level
@@ -170,6 +174,13 @@ compute_metrics <- function(summary_vec) {
     NA_real_
   }
 
+  # Regions with a significant segment, whatever its size. A planted effect is
+  # observed scaled by the labeling efficiency, so `sensitivity` falls with
+  # efficiency at effects near the effect-size cut; this does not.
+  regions_significant <- if ("regions_significant" %in% names(summary_vec))
+    unname(summary_vec["regions_significant"]) else NA_real_
+  sensitivity_significant <- if (n_regions > 0) regions_significant / n_regions else NA_real_
+
   return(list(
     TP = TP, FP = FP, FN = FN,
     n_regions = n_regions, regions_detected = regions_detected,
@@ -177,7 +188,9 @@ compute_metrics <- function(summary_vec) {
     precision = round(precision, 4),
     FDR = round(FDR, 4),
     F1 = round(F1, 4),
-    total_called = TP + FP
+    total_called = TP + FP,
+    regions_significant = regions_significant,
+    sensitivity_significant = round(sensitivity_significant, 4)
   ))
 }
 
@@ -205,6 +218,7 @@ compile_results <- function(all_results, scenario_labels = NULL) {
           n_regions = NA_integer_, regions_detected = NA_integer_,
           sensitivity = NA_real_, precision = NA_real_,
           FDR = NA_real_, F1 = NA_real_, total_called = NA_integer_,
+          regions_significant = NA_integer_, sensitivity_significant = NA_real_,
           domain_calls = NA_integer_, domain_retained = NA_real_
         )
         next
@@ -225,6 +239,10 @@ compile_results <- function(all_results, scenario_labels = NULL) {
         FDR = metrics$FDR,
         F1 = metrics$F1,
         total_called = metrics$total_called,
+        # Regions overlapped by a significant segment before the effect-size
+        # cut (NA when the caller did not supply the significant set).
+        regions_significant = as.integer(metrics$regions_significant),
+        sensitivity_significant = metrics$sensitivity_significant,
         # Broad-difference scenarios only (NA otherwise): calls inside the
         # genuine domains, and the fraction of domain windows they cover.
         domain_calls = res$domain$n_calls %||% NA_integer_,
@@ -279,8 +297,10 @@ compile_null_results <- function(null_results) {
 #'   [classify_dmrs()] results.
 #' @param regions Spike-in regions with `region_id` and `density_stratum`.
 #' @return data.table with one row per scenario x method x stratum:
-#'   `n_regions`, `regions_detected`, `sensitivity`. Empty if `regions` has no
-#'   `density_stratum` column.
+#'   `n_regions`, `regions_detected`, `sensitivity`, `regions_significant`,
+#'   `sensitivity_significant` (see [compute_metrics()]; `NA` when a result has
+#'   no `significant_regions`). Empty if `regions` has no `density_stratum`
+#'   column.
 compile_density_results <- function(all_results, regions) {
   if (!"density_stratum" %in% names(regions)) return(data.table())
   rows <- list()
@@ -289,10 +309,16 @@ compile_density_results <- function(all_results, regions) {
       res <- all_results[[scenario]][[method]]
       if (is.null(res)) next
       detected <- res$detected_regions
+      significant <- res$significant_regions
       per <- regions[, .(n_regions = .N,
-                         regions_detected = sum(region_id %in% detected)),
+                         regions_detected = sum(region_id %in% detected),
+                         regions_significant = if (is.null(significant)) NA_integer_
+                                               else sum(region_id %in% significant)),
                      by = density_stratum]
       per[, sensitivity := round(regions_detected / n_regions, 4)]
+      per[, sensitivity_significant := round(regions_significant / n_regions, 4)]
+      setcolorder(per, c("density_stratum", "n_regions", "regions_detected",
+                         "sensitivity"))
       rows[[length(rows) + 1L]] <- cbind(
         data.table(scenario = scenario, method = method), per)
     }

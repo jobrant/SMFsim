@@ -119,6 +119,22 @@ spacing of at most `max_median_spacing` are ranked by site count and cut into
 equal-sized strata. Sensitivity is reported overall
 (`spikein_simulation_results.csv`) and per stratum (`spikein_by_density.csv`).
 
+Both tables give two sensitivities. `sensitivity` counts regions with a call:
+a significant segment whose difference is at least `metilene_min_effect`.
+`sensitivity_significant` counts regions with a significant segment of any
+size. A planted effect is observed as effect x efficiency, so at effects near
+the cut `sensitivity` falls with efficiency while `sensitivity_significant`
+does not.
+
+`spikein_regions.csv` records each region's `baseline_rate`, `direction`
+(increase or decrease, in its `target_group`) and `planted_sign`, the sign of
+the planted group A minus group B difference.
+`inst/scripts/diagnose_spikein_calls.R` reads the saved metilene output of a
+multi-seed run and tabulates, per scenario, effect and method, what happened
+to each region (called, significant but under the effect cut, not
+significant), split by planted sign, and the number and size of the false
+calls under the current and stricter calling rules.
+
 `spikein_density = "densest"` gives the original design, which placed every
 spike-in in the densest regions genome-wide. Those regions are the easiest to
 call, so every method detected nearly all of them.

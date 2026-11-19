@@ -15,6 +15,10 @@ run_spikein_simulation(wt_reps, config)
 data.table of spike-in results by scenario × effect_size × method.
 Its \code{"by_density"} attribute, also written to \code{spikein_by_density.csv},
 holds region-level sensitivity per spike-in density stratum.
+\code{sensitivity} counts regions with a call (significant and at least
+\code{metilene_min_effect}); \code{sensitivity_significant} counts regions with a
+significant segment of any size. In parametric mode \code{spikein_regions.csv}
+also records each region's planted direction (see \code{\link[=spikein_direction]{spikein_direction()}}).
 }
 \description{
 Run the spike-in simulation (sensitivity assessment)
