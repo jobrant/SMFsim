@@ -17,6 +17,18 @@
 #   control_within  -- matched-mean within-group variation (specificity control)
 #   bias_parametric -- systematic between-group efficiency bias (the artifact)
 #   bias_clone      -- optional: same bias under the old clone mode, for contrast
+#   broad_between   -- optional: genuine broad differences between the groups
+#                      (1 Mb domains over 10, 30 or 50% of the genome), SMFnorm
+#                      with its between-group step ON. Measures what that step
+#                      costs: how much of a real broad difference it removes.
+#   broad_within    -- optional: the same scenarios and data with the
+#                      between-group step OFF (SMFnorm only; the other methods
+#                      do not depend on it, so read them from broad_between).
+#
+# The two broad_* blocks run only when named in SMFSIM_BLOCKS. Their tables
+# report calls inside the genuine domains separately: `domain_retained` is the
+# fraction of detectable 2 kb domain windows with a call, `domain_calls` their
+# number, and FP counts only calls outside the domains.
 #
 # Replicate noise (dispersion_s, fragment_rho) comes from
 # inst/scripts/calibrate_replicate_noise.R (earlier: s = 26 from diagnose_variance.R).
@@ -85,7 +97,8 @@ message("Methods: ", paste(config$methods, collapse = ", "))
 # Each block writes only under <base_output>/<block>/, so a subset rerun leaves
 # the other blocks' results untouched, and all_blocks.rds is rebuilt at the end
 # from whatever block results are on disk.
-known_blocks <- c("control_within", "bias_parametric", "bias_clone")
+known_blocks <- c("control_within", "bias_parametric", "bias_clone",
+                  "broad_between", "broad_within")
 default_blocks <- c("control_within", "bias_parametric",
                     if (RUN_CLONE_BASELINE) "bias_clone")
 
@@ -141,8 +154,10 @@ wt_reps <- prepare_wt_replicates(config)
 # --- Block runner --------------------------------------------------------
 # Each block gets its own output_dir so per-run summary CSVs do not collide.
 run_block <- function(block, scenarios, rate_between,
-                      sim_mode = config$sim_mode, do_spikein = TRUE) {
+                      sim_mode = config$sim_mode, do_spikein = TRUE,
+                      methods = NULL) {
     cfg <- config
+    if (!is.null(methods)) cfg$methods <- methods
     cfg$scenarios           <- scenarios
     cfg$rate_between_groups <- rate_between
     cfg$sim_mode            <- sim_mode
@@ -153,6 +168,7 @@ run_block <- function(block, scenarios, rate_between,
     message(sprintf("# BLOCK: %s  (mode=%s, rate_between_groups=%s)",
                     block, sim_mode, rate_between))
     message(sprintf("#   scenarios: %s", paste(scenarios, collapse = ", ")))
+    message(sprintf("#   methods:   %s", paste(cfg$methods, collapse = ", ")))
     message(strrep("#", 64))
 
     null    <- run_null_simulation(wt_reps, cfg)
@@ -212,11 +228,37 @@ if ("bias_clone" %in% run_blocks) {
               sim_mode     = "clone")
 }
 
+# (4) The cost of the between-group step: genuine broad differences between
+#     the groups. In broad_10/30/50 the efficiencies are matched, so nothing
+#     technical separates the groups and every call inside a domain is real.
+#     broad_30_aligned adds a between-group efficiency bias on top, the case
+#     where the step both helps (the bias) and costs (the domains). Same seed,
+#     so both blocks see the same simulated data and differ only in SMFnorm's
+#     between-group step.
+broad_scenarios <- c("broad_10", "broad_30", "broad_50", "broad_30_aligned")
+if ("broad_between" %in% run_blocks) {
+    run_block("broad_between",
+              scenarios    = broad_scenarios,
+              rate_between = TRUE)
+}
+if ("broad_within" %in% run_blocks) {
+    if (!"SMFnorm" %in% config$methods) {
+        message("\nBlock broad_within skipped: it runs SMFnorm only, and ",
+                "SMFnorm is not among the methods.")
+    } else {
+        run_block("broad_within",
+                  scenarios    = broad_scenarios,
+                  rate_between = FALSE,
+                  methods      = "SMFnorm")
+    }
+}
+
 # --- Combined results ----------------------------------------------------
 # Rebuilt from every block result on disk, not just the blocks run this time,
 # so a subset rerun still leaves a complete all_blocks.rds.
 block_keys <- c(control_within = "control", bias_parametric = "bias",
-                bias_clone = "bias_clone")
+                bias_clone = "bias_clone", broad_between = "broad_between",
+                broad_within = "broad_within")
 results <- list()
 for (b in names(block_keys)) {
     rds <- file.path(base_output, b, paste0(b, "_results.rds"))

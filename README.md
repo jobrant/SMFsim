@@ -229,6 +229,25 @@ config$methods           <- c("raw", "downsampled", "SMFnorm", "ComBatMet")
 Adjust `dispersion_s`, `within_alpha`, `between_alpha`, and `rate_between_groups`
 for the specific tuning run you are performing.
 
+## Broad-difference blocks
+
+SMFnorm's between-group step cannot tell a technical difference between
+groups from a genuine broad one. Two optional blocks of
+`inst/scripts/run_bias_experiment.R` measure what the step costs when the
+difference is real: `broad_between` (step on, all methods) and `broad_within`
+(step off, SMFnorm only), over the scenarios `broad_10`, `broad_30`,
+`broad_50` (a +0.15 difference over that share of the genome, matched
+efficiencies) and `broad_30_aligned` (the same with a between-group
+efficiency bias added). They run only when named:
+
+```bash
+SMFSIM_BLOCKS=broad_between,broad_within Rscript SMFsim/inst/scripts/run_bias_experiment.R
+```
+
+In their tables `domain_retained` is the fraction of detectable 2 kb windows
+inside the genuine domains that have a call, `domain_calls` the number of
+calls there, and `FP` counts only calls outside the domains.
+
 ## Example Scripts
 
 ### Within-alpha tuning

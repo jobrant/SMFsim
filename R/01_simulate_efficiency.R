@@ -1419,12 +1419,16 @@ get_effect_sizes <- function() {
 
 #' Choose broad domains that differ genuinely between groups
 #'
-#' Splits each chromosome into `domain_bp` windows, keeps windows that contain
-#' sites and do not overlap any region in `exclude` (e.g. spike-in regions),
-#' and samples a `fraction` of them.
+#' Splits each chromosome into `domain_bp` windows and samples domains from
+#' the windows that contain sites and do not overlap any region in `exclude`
+#' (e.g. spike-in regions). The number sampled is `fraction` of ALL windows
+#' with sites, so the domains cover the same share of the genome whether or
+#' not regions are excluded. (It used to be `fraction` of the windows left
+#' after exclusion: with 300 spike-in regions on one chromosome, "30%" was
+#' 11%.) If too few windows are free, all of them are used, with a warning.
 #'
 #' @param ref_dt data.table of sites (`chr`, `pos`).
-#' @param fraction Fraction of eligible windows to make domains.
+#' @param fraction Fraction of the windows with sites to make domains.
 #' @param domain_bp Window width.
 #' @param exclude Optional data.table of regions (`chr`, `start`, `end`) that
 #'   domains must avoid.
@@ -1437,6 +1441,7 @@ get_effect_sizes <- function() {
   domain_bp <- as.integer(domain_bp)
   cand <- unique(data.table(chr = as.character(ref_dt$chr),
                             win = ref_dt$pos %/% domain_bp))
+  n_want <- round(fraction * nrow(cand))
   if (!is.null(exclude) && nrow(exclude)) {
     ex <- unique(rbindlist(lapply(seq_len(nrow(exclude)), function(i) {
       data.table(chr = as.character(exclude$chr[i]),
@@ -1444,8 +1449,15 @@ get_effect_sizes <- function() {
     })))
     cand <- cand[!ex, on = c("chr", "win")]
   }
+  if (n_want > nrow(cand)) {
+    warning(sprintf(paste0(
+      ".select_broad_domains: %d domains wanted (%.0f%% of windows with sites) ",
+      "but only %d windows avoid the excluded regions; using all of them."),
+      n_want, 100 * fraction, nrow(cand)), call. = FALSE)
+    n_want <- nrow(cand)
+  }
   set.seed(seed)
-  pick <- cand[sort(sample(.N, round(fraction * .N)))]
+  pick <- cand[sort(sample(.N, n_want))]
   pick[, `:=`(start = win * domain_bp, end = win * domain_bp + domain_bp - 1L)]
   pick[]
 }

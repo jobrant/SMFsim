@@ -15,7 +15,7 @@
 \arguments{
 \item{ref_dt}{data.table of sites (\code{chr}, \code{pos}).}
 
-\item{fraction}{Fraction of eligible windows to make domains.}
+\item{fraction}{Fraction of the windows with sites to make domains.}
 
 \item{domain_bp}{Window width.}
 
@@ -28,8 +28,12 @@ domains must avoid.}
 data.table with \code{chr}, \code{start}, \code{end}, \code{win}.
 }
 \description{
-Splits each chromosome into \code{domain_bp} windows, keeps windows that contain
-sites and do not overlap any region in \code{exclude} (e.g. spike-in regions),
-and samples a \code{fraction} of them.
+Splits each chromosome into \code{domain_bp} windows and samples domains from
+the windows that contain sites and do not overlap any region in \code{exclude}
+(e.g. spike-in regions). The number sampled is \code{fraction} of ALL windows
+with sites, so the domains cover the same share of the genome whether or
+not regions are excluded. (It used to be \code{fraction} of the windows left
+after exclusion: with 300 spike-in regions on one chromosome, "30\%" was
+11\%.) If too few windows are free, all of them are used, with a warning.
 }
 \keyword{internal}

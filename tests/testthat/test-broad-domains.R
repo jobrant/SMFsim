@@ -18,9 +18,21 @@ test_that("domains cover the requested fraction and avoid excluded regions", {
     s <- .broad_sites()                       # 10 Mb per chromosome -> 20 windows
     ex <- data.table::data.table(chr = "chr1", start = 2.5e6, end = 3.5e6)
     d <- .select_broad_domains(s, 0.3, 1e6, exclude = ex, seed = 4)
-    expect_equal(nrow(d), round(0.3 * 18))    # 20 windows minus 2 excluded
+    # 30% of all 20 windows, drawn from the 18 that avoid the excluded region,
+    # so the share of the genome does not depend on what is excluded.
+    expect_equal(nrow(d), round(0.3 * 20))
+    expect_equal(nrow(.select_broad_domains(s, 0.3, 1e6, seed = 4)), nrow(d))
     expect_false(any(d$chr == "chr1" & d$win %in% c(2L, 3L)))
     expect_true(all(d$end - d$start + 1 == 1e6))
+})
+
+
+test_that("too few free windows gives all of them, with a warning", {
+    s <- .broad_sites()
+    ex <- data.table::data.table(chr = c("chr1", "chr2"), start = 0, end = 7.5e6)
+    expect_warning(d <- .select_broad_domains(s, 0.5, 1e6, exclude = ex, seed = 4),
+                   "using all of them")
+    expect_equal(nrow(d), 4L)                 # windows 8 and 9 on each chromosome
 })
 
 
