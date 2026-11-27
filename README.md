@@ -248,6 +248,21 @@ In their tables `domain_retained` is the fraction of detectable 2 kb windows
 inside the genuine domains that have a call, `domain_calls` the number of
 calls there, and `FP` counts only calls outside the domains.
 
+Read `FP` in these blocks against `raw` in the same block, not against the
+other blocks. Raw data has about 200-270 calls outside the domains here,
+against about 25-30 in `control_within`, and they are not domain edges (calls
+within 2 kb of a domain are set aside). BH sets its p-value cutoff from the
+number of significant tests, so the thousands of genuine domain calls raise it
+(from about 5e-6 in the control to 1e-3, 4e-3 and 8e-3 at 10, 30 and 50%) and
+more short null segments pass. These calls are split evenly between the two
+directions, about 70% have the minimum 10 sites, and they are 1.8%, 0.7% and
+0.3% of all calls, within the 5% target. At the control's cutoff they fall
+back to the control level.
+
+For the same reason, spike-in `precision`, `FDR` and `F1` in these blocks are
+lower for every method than in the other blocks and are not comparable with
+them; compare methods within the block.
+
 ## Example Scripts
 
 ### Within-alpha tuning
