@@ -88,6 +88,22 @@ config$methods <- if (nzchar(methods_env)) {
 }
 message("Methods: ", paste(config$methods, collapse = ", "))
 
+# SMFSIM_SCENARIOS (comma-separated) restricts every block to the scenarios
+# named, e.g. the bias scenarios plus broad_30 for the alpha sweep. A block
+# left with no scenario is skipped.
+scenarios_env <- trimws(Sys.getenv("SMFSIM_SCENARIOS"))
+only_scenarios <- if (nzchar(scenarios_env)) {
+    trimws(strsplit(scenarios_env, ",")[[1]])
+} else NULL
+if (!is.null(only_scenarios)) {
+    unknown_sc <- setdiff(only_scenarios, names(get_efficiency_scenarios()))
+    if (length(unknown_sc)) {
+        stop("SMFSIM_SCENARIOS names unknown scenario(s): ",
+             paste(unknown_sc, collapse = ", "), call. = FALSE)
+    }
+    message("Scenarios: ", paste(only_scenarios, collapse = ", "))
+}
+
 # --- Which blocks to run ------------------------------------------------
 # All of them by default. To rerun a subset -- e.g. after changing only the
 # between-group scenarios -- name them in SMFSIM_BLOCKS:
@@ -156,6 +172,14 @@ wt_reps <- prepare_wt_replicates(config)
 run_block <- function(block, scenarios, rate_between,
                       sim_mode = config$sim_mode, do_spikein = TRUE,
                       methods = NULL) {
+    if (!is.null(only_scenarios)) {
+        scenarios <- intersect(scenarios, only_scenarios)
+        if (!length(scenarios)) {
+            message("\nBlock ", block, " skipped: none of its scenarios is in ",
+                    "SMFSIM_SCENARIOS.")
+            return(invisible(NULL))
+        }
+    }
     cfg <- config
     if (!is.null(methods)) cfg$methods <- methods
     cfg$scenarios           <- scenarios

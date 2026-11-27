@@ -31,6 +31,12 @@
 #
 # base_dir defaults to results/bias_experiment, out_dir to
 # results/figures/manuscript.
+#
+# When the alpha sweep has been run (jobs/alpha_sweep, results under
+# <dirname(base_dir)>/alpha_sweep/<model>/<within|between>_<alpha>/seed_<n>/,
+# or the directory in SMFSIM_ALPHA_SWEEP), it also writes
+#   fig_alpha_sweep_within_<model>, fig_alpha_sweep_between_<model>
+#   table_alpha_sweep.csv
 
 suppressMessages({
     library(data.table)
@@ -276,9 +282,141 @@ plot_broad <- function(model, effect = 0.15) {
 }
 
 
+# 4. Alpha sweep (supplement) -----------------------------------------------
+
+alpha_dir <- Sys.getenv("SMFSIM_ALPHA_SWEEP", file.path(dirname(base), "alpha_sweep"))
+alpha_effect <- 0.15
+
+# Every seed of every alpha value of one sweep: null false positives, spike-in
+# sensitivity at `alpha_effect`, and (broad scenarios) the domain signal kept.
+.alpha_data <- function(model, sweep) {
+    dirs <- Sys.glob(file.path(alpha_dir, model, paste0(sweep, "_*"), "seed_*"))
+    out <- list()
+    for (d in dirs) {
+        alpha <- as.numeric(sub(paste0("^", sweep, "_"), "", basename(dirname(d))))
+        seed  <- as.integer(sub("^seed_", "", basename(d)))
+        for (nf in Sys.glob(file.path(d, "*", "null_simulation_results.csv"))) {
+            n <- fread(nf)[method == "SMFnorm"]
+            out[[length(out) + 1]] <- n[, .(alpha, seed, scenario, measure = "fp",
+                                            value = as.numeric(FP))]
+            if ("domain_retained" %in% names(n) && any(!is.na(n$domain_retained))) {
+                out[[length(out) + 1]] <- n[!is.na(domain_retained),
+                    .(alpha, seed, scenario, measure = "retained",
+                      value = domain_retained)]
+            }
+            sf <- file.path(dirname(nf), "spikein_simulation_results.csv")
+            if (file.exists(sf)) {
+                sp <- fread(sf)[method == "SMFnorm" &
+                                abs(effect_size - alpha_effect) < 1e-8]
+                out[[length(out) + 1]] <- sp[, .(alpha, seed,
+                    scenario = efficiency_scenario, measure = "sensitivity",
+                    value = sensitivity)]
+            }
+        }
+    }
+    rbindlist(out)
+}
+
+# Raw data in the same scenarios, from the main benchmark (mean across seeds).
+.alpha_raw <- function(model, scenarios) {
+    out <- list()
+    for (b in c("control_within", "bias_parametric", "broad_between")) {
+        n <- .read(model, b, "null_by_seed.csv")
+        sp <- .read(model, b, "spikein_by_seed.csv")
+        if (is.null(n) || is.null(sp)) next
+        n <- n[method == "raw"]
+        sp <- sp[method == "raw" & abs(effect_size - alpha_effect) < 1e-8]
+        out[[length(out) + 1]] <- rbind(
+            n[, .(scenario, measure = "fp", value = as.numeric(FP))],
+            n[!is.na(domain_retained), .(scenario, measure = "retained",
+                                         value = domain_retained)],
+            sp[, .(scenario = efficiency_scenario, measure = "sensitivity",
+                   value = sensitivity)])
+    }
+    r <- rbindlist(out)[scenario %in% scenarios]
+    r[, .(value = mean(value)), by = .(scenario, measure)]
+}
+
+plot_alpha <- function(model, sweep) {
+    d <- .alpha_data(model, sweep)
+    if (!nrow(d)) return(NULL)
+    one_line <- gsub("\n", " ", scenario_labels)
+    one_line[grepl("^broad_", names(one_line))] <- paste(
+        "Real broad difference,", one_line[grepl("^broad_", names(one_line))])
+    raw <- .alpha_raw(model, unique(d$scenario))
+    d[, s := .lab(scenario, one_line)]
+    raw[, s := .lab(scenario, one_line)]
+    mean_d <- d[, .(value = mean(value)), by = .(measure, s, alpha)]
+    series <- c("SMFnorm", "Raw (no normalization)")
+    cols <- setNames(c(method_colors[["SMFnorm"]], method_colors[["Raw"]]), series)
+
+    alphas <- sort(unique(d$alpha))
+    row <- function(meas, ylab, log = FALSE, last = FALSE, strips = TRUE) {
+        dd <- d[measure == meas]
+        p <- ggplot(dd, aes(alpha, value)) +
+            geom_hline(data = raw[measure == meas & s %in% dd$s],
+                       aes(yintercept = value, colour = series[2]),
+                       linetype = "dashed", linewidth = 0.5) +
+            geom_point(aes(colour = series[1]), size = 0.8, alpha = 0.4) +
+            geom_line(data = mean_d[measure == meas],
+                      aes(colour = series[1]), linewidth = 0.6) +
+            geom_point(data = mean_d[measure == meas],
+                       aes(colour = series[1]), size = 1.9) +
+            facet_grid(. ~ s, labeller = label_wrap_gen(20)) +
+            scale_x_continuous(breaks = alphas,
+                               labels = function(x) ifelse(
+                                   abs(x - 0.9) < 1e-8, "",
+                                   format(x, drop0trailing = TRUE)),
+                               expand = expansion(mult = 0.08)) +
+            scale_colour_manual(values = cols, breaks = series) +
+            labs(x = if (last) paste0(sweep, "_alpha") else NULL, y = ylab) +
+            theme_ms() + theme(panel.spacing = unit(12, "pt"))
+        if (!last) p <- p + theme(axis.text.x = element_blank())
+        if (!strips) p <- p + theme(strip.text = element_blank())
+        if (log) {
+            p + scale_y_continuous(
+                trans = scales::pseudo_log_trans(base = 10, sigma = 1),
+                breaks = c(0, 10, 100, 1000, 10000), labels = scales::comma)
+        } else {
+            p + scale_y_continuous(limits = c(0, 1), breaks = seq(0, 1, 0.25))
+        }
+    }
+    has_ret <- any(d$measure == "retained")
+    p <- row("fp", "False-positive calls\n(null, log scale)", log = TRUE) /
+        row("sensitivity", sprintf("Planted regions called\n(difference %.2f)",
+                                   alpha_effect), last = TRUE, strips = FALSE)
+    if (has_ret) {
+        # Under the broad-difference columns, which come last.
+        n_ret <- uniqueN(d[measure == "retained", scenario])
+        n_other <- uniqueN(d$scenario) - n_ret
+        p <- p / (plot_spacer() +
+                  row("retained", "Broad difference\nkept", last = TRUE,
+                      strips = FALSE) +
+                  plot_layout(widths = c(max(n_other, 0.01), n_ret)))
+    }
+    p <- p + plot_layout(guides = "collect") +
+        plot_annotation(
+            title = sprintf("SMFnorm across %s_alpha", sweep),
+            subtitle = paste0(
+                if (sweep == "within") "Efficiency differs within groups; between_alpha = 1. "
+                else "Efficiency differs between groups; within_alpha = 1. ",
+                tools::toTitleCase(model), " model. Line: mean of ",
+                uniqueN(d$seed), " seeds; small symbols: each seed."),
+            theme = theme_ms()) &
+        theme(legend.position = "bottom")
+    .save(p, sprintf("fig_alpha_sweep_%s_%s", sweep, model),
+          if (sweep == "within") 6.5 else 9.5, if (has_ret) 6.6 else 4.8)
+    d[, `:=`(model = model, sweep = sweep, s = NULL)]
+    rbind(.across(d, "value", c("model", "sweep", "alpha", "scenario", "measure")),
+          raw[, .(model = model, sweep = "raw", alpha = NA_real_, scenario, measure,
+                  n_seeds = NA_integer_, mean = value, sd = NA_real_,
+                  min = NA_real_, max = NA_real_)])
+}
+
+
 # Run -----------------------------------------------------------------------
 
-tabs <- list(null = list(), sens = list(), broad = list())
+tabs <- list(null = list(), sens = list(), broad = list(), alpha = list())
 for (model in models) {
     message("\n== ", model)
     tabs$null[[model]] <- plot_null(model)
@@ -289,11 +427,15 @@ for (model in models) {
         model, "control_within", paste0("fig_spikein_sensitivity_within_", model),
         "Detecting planted differences when efficiency differs within groups")
     tabs$broad[[model]] <- plot_broad(model)
+    for (sweep in c("within", "between")) {
+        tabs$alpha[[paste(model, sweep)]] <- plot_alpha(model, sweep)
+    }
 }
 
 .write <- function(x, name) {
     x <- rbindlist(x, fill = TRUE)
     if (!nrow(x)) return(invisible())
+    x <- unique(x)
     num <- c("mean", "sd", "min", "max")
     x[, (num) := lapply(.SD, signif, 4), .SDcols = num]
     fwrite(x, file.path(out_dir, name))
@@ -303,3 +445,4 @@ message("\n== tables")
 .write(tabs$null,  "table_null_false_positives.csv")
 .write(tabs$sens,  "table_spikein_sensitivity.csv")
 .write(tabs$broad, "table_broad_tradeoff.csv")
+.write(tabs$alpha, "table_alpha_sweep.csv")
